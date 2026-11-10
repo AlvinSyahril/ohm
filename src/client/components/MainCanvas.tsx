@@ -2,56 +2,54 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
-  Play,
-  Pause,
-  Plus,
-  Sparkles,
+  Bell,
+  X,
   Loader2,
   Trash2,
+  Play,
   Heart,
   Clock,
   ListMusic,
-  Zap,
 } from 'lucide-react';
-import { usePlayerStore, Track } from '../store/usePlayerStore';
+import { usePlayerStore } from '../store/usePlayerStore';
 import { TrackCard, TrackArtwork, formatDuration } from './TrackCard';
+
+const FILTER_CHIPS = [
+  { id: 'synth', label: 'Sound out', query: 'Dark Synthwave Daft Punk Kavinsky', dismissible: true },
+  { id: 'electro', label: 'Bratos', query: 'Justice Electronic Gesaffelstein', dismissible: true },
+  { id: 'ambient', label: 'Penotronic', query: 'Aphex Twin Bicep Bonobo Electronic', dismissible: false },
+  { id: 'lofi', label: 'Lo-Fi Pulse', query: 'Nujabes Lofi Chill Instrumental', dismissible: false },
+  { id: 'indie', label: 'Night Drive', query: 'Kavinsky Chromatics College Synth', dismissible: false },
+];
 
 export const MainCanvas: React.FC = () => {
   const {
     activeTab,
     setActiveTab,
     searchQuery,
-    setSearchQuery,
     searchResults,
     isSearching,
     performSearch,
-    currentTrack,
-    isPlaying,
     playTrack,
-    togglePlay,
     favorites,
     history,
     queue,
     removeFromQueue,
     clearQueue,
+    sfxEnabled,
+    toggleSfx,
   } = usePlayerStore();
 
-  const [localInput, setLocalInput] = useState(searchQuery);
+  const [localInput, setLocalInput] = useState('');
+  const [selectedChip, setSelectedChip] = useState<string>('synth');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Initial load on startup so the app opens with rich live music
   useEffect(() => {
     if (searchResults.length === 0 && !isSearching) {
       performSearch('Daft Punk Justice Synthwave');
     }
   }, []);
 
-  // Sync local input when preset clicked in sidebar
-  useEffect(() => {
-    setLocalInput(searchQuery);
-  }, [searchQuery]);
-
-  // Press '/' anywhere to focus the search bar
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === '/' && document.activeElement !== searchInputRef.current) {
@@ -67,224 +65,178 @@ export const MainCanvas: React.FC = () => {
     e.preventDefault();
     if (localInput.trim()) {
       if (activeTab !== 'search' && activeTab !== 'discover') {
-        setActiveTab('search');
+        setActiveTab('discover');
       }
       performSearch(localInput.trim());
     }
   };
 
-  const heroTrack: Track | undefined = searchResults[0];
-  const gridTracks: Track[] = searchResults.slice(1);
-  const isHeroPlaying = heroTrack && currentTrack?.id === heroTrack.id && isPlaying;
+  const handleChipClick = (chip: (typeof FILTER_CHIPS)[number]) => {
+    setSelectedChip(chip.id);
+    setLocalInput('');
+    performSearch(chip.query);
+  };
 
   return (
-    <main className="flex-1 h-full flex flex-col bg-[#0a0b0e] overflow-hidden">
-      {/* Sticky Top Omnibar Header */}
-      <header className="h-18 px-6 border-b border-[#232736] bg-[#0a0b0e]/90 backdrop-blur-md flex items-center justify-between gap-4 shrink-0 z-20">
-        <form onSubmit={handleSearchSubmit} className="flex-1 max-w-xl relative">
-          <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+    <main className="flex-1 h-full flex flex-col bg-[#0b0c0e] overflow-hidden">
+      {/* Top Header: Sleek Rounded Search Input + Notification Bell & Cyan Avatar */}
+      <header className="px-7 pt-6 pb-3 flex items-center justify-between gap-4 shrink-0 z-20">
+        <form onSubmit={handleSearchSubmit} className="w-full max-w-[480px] relative">
+          <Search className="w-4 h-4 text-zinc-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             ref={searchInputRef}
             type="text"
             value={localInput}
             onChange={(e) => setLocalInput(e.target.value)}
-            placeholder="Search tracks, artists, frequencies... (Press '/' to focus)"
-            className="w-full pl-10 pr-24 py-2.5 bg-[#12141c] border border-[#232736] focus:border-[#a3e635] focus:outline-none text-sm text-white placeholder-zinc-500 font-medium transition-colors"
+            placeholder="Search"
+            aria-label="Search tracks"
+            className="w-full pl-11 pr-10 py-2.5 rounded-xl bg-[#181b20] border border-white/[0.05] focus:border-white/[0.18] focus:outline-none text-[14px] text-white placeholder-zinc-500 transition-colors"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-            {isSearching ? (
-              <Loader2 className="w-4 h-4 text-[#a3e635] animate-spin mr-2" />
-            ) : (
-              <button
-                type="submit"
-                className="px-2.5 py-1 bg-[#171a24] hover:bg-[#a3e635] text-zinc-300 hover:text-[#0a0b0e] border border-[#232736] font-mono text-[10px] font-semibold tracking-wider transition-colors cursor-pointer"
-              >
-                SCAN
-              </button>
-            )}
-          </div>
+          {isSearching && (
+            <Loader2 className="w-4 h-4 text-[#b8ff01] animate-spin absolute right-3.5 top-1/2 -translate-y-1/2" />
+          )}
         </form>
 
-        {/* Status Telemetry Pill */}
-        <div className="hidden md:flex items-center gap-3 font-mono text-xs">
-          <div className="px-3 py-1.5 bg-[#12141c] border border-[#232736] flex items-center gap-2">
-            <Zap className="w-3.5 h-3.5 text-[#a3e635]" />
-            <span className="text-zinc-400">AUTO-CIPHER:</span>
-            <span className="text-[#a3e635] font-semibold">VERIFIED</span>
+        {/* Top-Right Bell & Avatar Matching Concept */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleSfx}
+            title={sfxEnabled ? 'Tactile Sound FX: ON' : 'Tactile Sound FX: OFF'}
+            aria-label="Toggle notification sound effects"
+            className={`w-10 h-10 rounded-full flex items-center justify-center border transition-colors cursor-pointer ${
+              sfxEnabled
+                ? 'bg-[#181b20] border-white/[0.07] text-zinc-300 hover:text-white'
+                : 'bg-[#14161a] border-white/[0.04] text-zinc-600'
+            }`}
+          >
+            <Bell className="w-[18px] h-[18px]" />
+          </button>
+
+          <div className="w-10 h-10 rounded-full p-[1.5px] bg-gradient-to-tr from-[#00e5ff] to-[#b8ff01] shadow-[0_0_14px_rgba(0,229,255,0.25)]">
+            <img
+              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80"
+              alt="Profile"
+              className="w-full h-full rounded-full object-cover"
+            />
           </div>
         </div>
       </header>
 
-      {/* Scrollable Content Viewport */}
-      <div className="flex-1 overflow-y-auto p-6 pb-32 space-y-8">
+      {/* Filter Pills Bar Directly Below Search */}
+      {(activeTab === 'discover' || activeTab === 'search') && (
+        <div className="px-7 pb-4 pt-1 flex items-center gap-2.5 overflow-x-auto no-scrollbar shrink-0">
+          <button
+            onClick={() => {
+              setSelectedChip('all');
+              performSearch('Daft Punk Justice Synthwave');
+            }}
+            className="px-4 py-1.5 rounded-full bg-[#b8ff01] text-[#0b0c0e] text-[12px] font-bold tracking-tight cursor-pointer shrink-0 shadow-[0_2px_12px_rgba(184,255,1,0.2)]"
+          >
+            Filters
+          </button>
+
+          {FILTER_CHIPS.map((chip) => {
+            const isSelected = selectedChip === chip.id;
+            return (
+              <button
+                key={chip.id}
+                onClick={() => handleChipClick(chip)}
+                className={`px-3.5 py-1.5 rounded-full text-[12px] font-medium flex items-center gap-2 transition-colors cursor-pointer shrink-0 border ${
+                  isSelected
+                    ? 'bg-[#20242c] border-white/[0.18] text-white'
+                    : 'bg-[#16191e] border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:border-white/[0.12]'
+                }`}
+              >
+                <span>{chip.label}</span>
+                {chip.dismissible && (
+                  <X className="w-3 h-3 text-zinc-500 hover:text-white" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto px-7 pt-1 pb-32">
         <AnimatePresence mode="wait">
-          {/* DISCOVER & SEARCH VIEW */}
           {(activeTab === 'discover' || activeTab === 'search') && (
             <motion.div
-              key="discover-view"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-8"
+              key="discover-grid"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
             >
-              {/* Featured Spotlight Hero Card */}
-              {heroTrack && (
-                <section>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#a3e635]">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Primary Signal Match</span>
-                    </div>
-                    <span className="font-mono text-[11px] text-zinc-500">
-                      {searchResults.length} STREAMS INDEXED
-                    </span>
-                  </div>
-
-                  <div className="relative bg-[#12141c] border border-[#232736] hover:border-[#a3e635] p-5 md:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-[4px_4px_0px_#171a24] transition-colors">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-                      <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-[#0a0b0e] border border-[#232736] shrink-0 overflow-hidden">
-                        <TrackArtwork
-                          track={heroTrack}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 bg-black/85 border border-[#232736] font-mono text-[10px] text-[#a3e635]">
-                          {formatDuration(heroTrack.duration)}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-[#a3e635]/15 border border-[#a3e635] font-mono text-[10px] text-[#a3e635] font-semibold">
-                          FEATURED FREQUENCY
-                        </div>
-                        <h1 className="font-display font-bold text-2xl md:text-3xl text-white tracking-tight">
-                          {heroTrack.title}
-                        </h1>
-                        <p className="text-sm text-zinc-300 font-medium">
-                          {heroTrack.artist}{' '}
-                          {heroTrack.album && (
-                            <span className="text-zinc-500 font-mono text-xs">
-                              // {heroTrack.album}
-                            </span>
-                          )}
-                        </p>
+              {isSearching ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {Array.from({ length: 10 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-[16px] p-3 bg-[#14171c] border border-white/[0.05] animate-pulse space-y-3"
+                    >
+                      <div className="aspect-square w-full rounded-[11px] bg-[#1c2027]" />
+                      <div className="h-2.5 bg-[#1c2027] rounded w-1/2" />
+                      <div className="h-3.5 bg-[#1c2027] rounded w-3/4" />
+                      <div className="flex justify-between pt-1">
+                        <div className="h-3 bg-[#1c2027] rounded w-1/3" />
+                        <div className="h-4 bg-[#1c2027] rounded-full w-12" />
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                      <motion.button
-                        whileHover={{ scale: 1.03 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => {
-                          if (currentTrack?.id === heroTrack.id) {
-                            togglePlay();
-                          } else {
-                            playTrack(heroTrack, gridTracks);
-                          }
-                        }}
-                        className="neo-btn px-5 py-3 bg-[#a3e635] text-[#0a0b0e] font-display font-bold text-sm tracking-wide flex items-center gap-2.5 cursor-pointer"
-                      >
-                        {isHeroPlaying ? (
-                          <>
-                            <Pause className="w-4 h-4 fill-current" />
-                            <span>PAUSE STREAM</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-4 h-4 fill-current" />
-                            <span>ENGAGE STREAM</span>
-                          </>
-                        )}
-                      </motion.button>
-
-                      <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => playTrack(heroTrack, gridTracks)}
-                        className="px-4 py-3 bg-[#171a24] hover:bg-[#1f2433] text-zinc-200 border border-[#232736] font-mono text-xs flex items-center gap-2 cursor-pointer transition-colors"
-                      >
-                        <Plus className="w-4 h-4 text-[#a3e635]" />
-                        <span>QUEUE ALL</span>
-                      </motion.button>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Discovery Track Grid */}
-              <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display font-bold text-lg text-white tracking-wide uppercase">
-                    Resolved Audio Matrix
-                  </h2>
-                  <span className="font-mono text-xs text-zinc-500">
-                    CLICK ANY CARD TO STREAM INSTANTLY
-                  </span>
+                  ))}
                 </div>
-
-                {isSearching ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                    {Array.from({ length: 10 }).map((_, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3.5 bg-[#12141c] border border-[#232736] animate-pulse space-y-3"
-                      >
-                        <div className="aspect-square w-full bg-[#1a1d29]" />
-                        <div className="h-4 bg-[#1a1d29] w-3/4" />
-                        <div className="h-3 bg-[#1a1d29] w-1/2" />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                    {gridTracks.map((track, idx) => (
-                      <TrackCard
-                        key={`${track.id}-${idx}`}
-                        track={track}
-                        index={idx}
-                        contextQueue={gridTracks}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {searchResults.map((track, idx) => (
+                    <TrackCard
+                      key={`${track.id}-${idx}`}
+                      track={track}
+                      index={idx}
+                      contextQueue={searchResults}
+                      genreLabel="Genre"
+                    />
+                  ))}
+                </div>
+              )}
             </motion.div>
           )}
 
-          {/* SAVED VAULT / LIBRARY VIEW */}
+          {/* LIBRARY VIEW */}
           {activeTab === 'library' && (
             <motion.div
               key="library-view"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-10"
+              transition={{ duration: 0.18 }}
+              className="space-y-8 pt-2"
             >
               <section>
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#232736]">
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2.5">
-                    <Heart className="w-5 h-5 text-[#a3e635] fill-[#a3e635]" />
-                    <h2 className="font-display font-bold text-xl text-white">
-                      Saved Vault ({favorites.length})
+                    <Heart className="w-5 h-5 text-[#b8ff01] fill-[#b8ff01]" />
+                    <h2 className="font-display font-bold text-lg text-white">
+                      Library ({favorites.length})
                     </h2>
                   </div>
                   {favorites.length > 0 && (
-                    <motion.button
-                      whileTap={{ scale: 0.95 }}
+                    <button
                       onClick={() => playTrack(favorites[0], favorites.slice(1))}
-                      className="neo-btn px-4 py-2 bg-[#a3e635] text-[#0a0b0e] font-mono text-xs font-bold flex items-center gap-2 cursor-pointer"
+                      className="px-4 py-1.5 rounded-full bg-[#b8ff01] text-[#0b0c0e] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
-                      PLAY VAULT
-                    </motion.button>
+                      Play All
+                    </button>
                   )}
                 </div>
 
                 {favorites.length === 0 ? (
-                  <div className="p-12 border border-dashed border-[#232736] text-center space-y-2">
-                    <p className="font-display text-zinc-400">Your Saved Vault is empty.</p>
-                    <p className="font-mono text-xs text-zinc-500">
-                      Click the heart icon on any track card to lock it into your local vault.
+                  <div className="p-12 rounded-2xl bg-[#14171c] border border-white/[0.06] text-center space-y-1.5">
+                    <p className="font-display text-zinc-300 font-medium">
+                      Your Library is empty
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      Hover over any album card and click the heart icon to save tracks here.
                     </p>
                   </div>
                 ) : (
@@ -295,23 +247,21 @@ export const MainCanvas: React.FC = () => {
                         track={track}
                         index={idx}
                         contextQueue={favorites}
+                        genreLabel="Saved"
                       />
                     ))}
                   </div>
                 )}
               </section>
 
-              {/* Recent Playback History */}
-              <section>
-                <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-[#232736]">
-                  <Clock className="w-5 h-5 text-cyan-400" />
-                  <h2 className="font-display font-bold text-xl text-white">
-                    Recent Signal Log ({history.length})
-                  </h2>
-                </div>
-                {history.length === 0 ? (
-                  <p className="font-mono text-xs text-zinc-500">No tracks played in this session yet.</p>
-                ) : (
+              {history.length > 0 && (
+                <section>
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <Clock className="w-4 h-4 text-[#00e5ff]" />
+                    <h2 className="font-display font-bold text-base text-zinc-200">
+                      Recently Played
+                    </h2>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     {history.map((track, idx) => (
                       <TrackCard
@@ -319,79 +269,80 @@ export const MainCanvas: React.FC = () => {
                         track={track}
                         index={idx}
                         contextQueue={history}
+                        genreLabel="Recent"
                       />
                     ))}
                   </div>
-                )}
-              </section>
+                </section>
+              )}
             </motion.div>
           )}
 
-          {/* ACTIVE QUEUE VIEW */}
+          {/* QUEUE VIEW */}
           {activeTab === 'queue' && (
             <motion.div
               key="queue-view"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-6"
+              transition={{ duration: 0.18 }}
+              className="space-y-4 pt-2"
             >
-              <div className="flex items-center justify-between pb-3 border-b border-[#232736]">
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2.5">
-                  <ListMusic className="w-5 h-5 text-[#a3e635]" />
-                  <h2 className="font-display font-bold text-xl text-white">
-                    Active Playback Queue ({queue.length})
+                  <ListMusic className="w-5 h-5 text-[#b8ff01]" />
+                  <h2 className="font-display font-bold text-lg text-white">
+                    Up Next ({queue.length})
                   </h2>
                 </div>
                 {queue.length > 0 && (
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
+                  <button
                     onClick={clearQueue}
-                    className="px-3 py-1.5 bg-[#171a24] hover:bg-red-500/20 text-zinc-400 hover:text-red-400 border border-[#232736] hover:border-red-500/40 font-mono text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                    className="px-3.5 py-1.5 rounded-full bg-[#181b20] hover:bg-red-500/20 text-zinc-400 hover:text-red-400 border border-white/[0.06] text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    CLEAR QUEUE
-                  </motion.button>
+                    Clear
+                  </button>
                 )}
               </div>
 
               {queue.length === 0 ? (
-                <div className="p-12 border border-dashed border-[#232736] text-center space-y-2">
-                  <p className="font-display text-zinc-400">No upcoming tracks in the queue.</p>
-                  <p className="font-mono text-xs text-zinc-500">
-                    Play any track from Discover or click the + button to build your pipeline.
+                <div className="p-12 rounded-2xl bg-[#14171c] border border-white/[0.06] text-center space-y-1.5">
+                  <p className="font-display text-zinc-300 font-medium">
+                    No tracks in queue
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    Click any track on the Home grid to start streaming and populate your queue.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {queue.map((track, idx) => (
-                    <motion.div
+                    <div
                       key={`${track.id}-${idx}`}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: Math.min(idx * 0.02, 0.25) }}
                       onClick={() => playTrack(track, queue.slice(idx + 1))}
-                      className="p-3 bg-[#12141c] hover:bg-[#171b26] border border-[#232736] hover:border-[#a3e635] flex items-center justify-between gap-4 cursor-pointer group transition-colors"
+                      className="p-3 rounded-xl bg-[#14171c] hover:bg-[#191d24] border border-white/[0.06] hover:border-white/[0.14] flex items-center justify-between gap-4 cursor-pointer group transition-colors"
                     >
-                      <div className="flex items-center gap-4 min-w-0">
-                        <span className="font-mono text-xs text-zinc-500 w-6 text-right">
-                          {String(idx + 1).padStart(2, '0')}
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <span className="text-xs text-zinc-500 w-5 text-right font-medium">
+                          {idx + 1}
                         </span>
                         <TrackArtwork
                           track={track}
-                          className="w-11 h-11 object-cover border border-[#232736]"
+                          className="w-11 h-11 rounded-lg object-cover"
                         />
                         <div className="min-w-0">
-                          <div className="font-display font-semibold text-sm text-white group-hover:text-[#a3e635] truncate">
+                          <div className="font-display font-bold text-sm text-white group-hover:text-[#b8ff01] truncate">
                             {track.title}
                           </div>
-                          <div className="text-xs text-zinc-400 truncate">{track.artist}</div>
+                          <div className="text-xs text-zinc-400 truncate">
+                            {track.artist}
+                          </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-4 shrink-0">
-                        <span className="font-mono text-xs text-zinc-400">
+                        <span className="text-xs text-zinc-500">
                           {formatDuration(track.duration)}
                         </span>
                         <button
@@ -405,7 +356,7 @@ export const MainCanvas: React.FC = () => {
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               )}

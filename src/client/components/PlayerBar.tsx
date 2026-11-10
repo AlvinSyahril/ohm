@@ -10,13 +10,11 @@ import {
   Repeat1,
   Volume2,
   VolumeX,
-  ListMusic,
-  Heart,
   Loader2,
   Disc,
 } from 'lucide-react';
 import { usePlayerStore } from '../store/usePlayerStore';
-import { TrackArtwork, formatDuration } from './TrackCard';
+import { TrackArtwork } from './TrackCard';
 
 export const PlayerBar: React.FC = () => {
   const {
@@ -29,9 +27,7 @@ export const PlayerBar: React.FC = () => {
     isMuted,
     repeatMode,
     shuffle,
-    isQueueOpen,
     queue,
-    favorites,
     togglePlay,
     setIsPlaying,
     setIsLoadingStream,
@@ -43,19 +39,28 @@ export const PlayerBar: React.FC = () => {
     toggleMute,
     toggleRepeat,
     toggleShuffle,
-    setQueueOpen,
-    toggleFavorite,
   } = usePlayerStore();
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const isSwitchingTrackRef = useRef<boolean>(false);
 
+  // Generate 120 center-symmetric waveform bars matching the concept image
   const waveformBars = useMemo(() => {
-    const seed = currentTrack?.id || 'ohm-default';
-    return Array.from({ length: 56 }, (_, i) => {
-      const charCode = seed.charCodeAt(i % seed.length) || 65;
-      const val = ((charCode * (i + 11) * 17) % 72) + 24;
-      return val;
+    const seed = currentTrack?.id || 'ohm-default-wave';
+    const total = 120;
+    return Array.from({ length: total }, (_, i) => {
+      // Create organic envelope that swells in the middle-left and middle-right like the concept
+      const norm = i / total;
+      const envelope =
+        Math.sin(norm * Math.PI) *
+        (0.55 + 0.45 * Math.sin(norm * Math.PI * 5 + 0.8));
+      const charCode = seed.charCodeAt(i % seed.length) || 70;
+      const pseudoRand = ((charCode * (i + 13) * 29) % 100) / 100;
+      const heightPx = Math.max(
+        3,
+        Math.round((envelope * 0.72 + pseudoRand * 0.28) * 28)
+      );
+      return heightPx;
     });
   }, [currentTrack?.id]);
 
@@ -77,7 +82,7 @@ export const PlayerBar: React.FC = () => {
         setIsPlaying(true);
       })
       .catch(() => {
-        // Will be retried inside onCanPlay once stream headers arrive
+        // Retried inside onCanPlay once stream headers arrive
       });
   }, [currentTrack?.id]);
 
@@ -129,13 +134,11 @@ export const PlayerBar: React.FC = () => {
   };
 
   const progressPercent =
-    duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
-  const isFav = currentTrack
-    ? favorites.some((t) => t.id === currentTrack.id)
-    : false;
+    duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 45;
+  const effectiveVolume = isMuted ? 0 : volume;
 
   return (
-    <footer className="h-24 bg-[#0d0f14] border-t border-[#232736] px-6 flex items-center justify-between gap-6 select-none z-30 shrink-0">
+    <footer className="relative h-[88px] bg-[#0c0e12]/95 backdrop-blur-xl px-7 flex items-center justify-between gap-6 select-none z-30 shrink-0">
       <audio
         ref={audioRef}
         preload="auto"
@@ -159,7 +162,6 @@ export const PlayerBar: React.FC = () => {
           setIsPlaying(true);
         }}
         onPause={(e) => {
-          // Ignore automatic browser pause events triggered during track switching or track end
           if (isSwitchingTrackRef.current || e.currentTarget.ended) return;
           setIsPlaying(false);
         }}
@@ -177,210 +179,187 @@ export const PlayerBar: React.FC = () => {
         }}
       />
 
-      {/* Left: Currently Playing Track Telemetry */}
-      <div className="w-72 flex items-center gap-3.5 min-w-0">
+      {/* Ambient Radial Lime & Cyan Underglow (Exact Match to Concept Image) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-6 left-[24%] w-72 h-28 bg-[#b8ff01]/20 blur-[36px] rounded-full" />
+        <div className="absolute -top-6 left-[60%] w-64 h-28 bg-[#00e5ff]/15 blur-[36px] rounded-full" />
+      </div>
+
+      {/* Top Edge Full-Width Interactive Waveform Scrubber */}
+      <div
+        onClick={handleSeek}
+        title="Click anywhere along the waveform to seek"
+        className="absolute -top-[15px] left-0 right-0 h-[30px] flex items-center cursor-pointer z-40 group"
+      >
+        {/* Left Solid Lime Lead-In Line */}
+        <div className="w-[18%] h-[2px] bg-[#b8ff01] shadow-[0_0_8px_#b8ff01]" />
+
+        {/* Center Symmetric Soundwave Bars */}
+        <div className="flex-1 h-full flex items-center justify-between gap-[2px] px-1">
+          {waveformBars.map((barHeight, idx) => {
+            const pct = (idx / waveformBars.length) * 100;
+            const isPlayed = pct <= progressPercent;
+            const isCyanZone = pct > 68;
+
+            return (
+              <div
+                key={idx}
+                style={{ height: `${barHeight}px` }}
+                className={`w-[2px] rounded-full transition-all duration-150 ${
+                  isPlaying && isPlayed ? 'waveform-playing' : ''
+                } ${
+                  isPlayed
+                    ? 'bg-[#b8ff01] shadow-[0_0_8px_rgba(184,255,1,0.75)]'
+                    : isCyanZone
+                    ? 'bg-[#00e5ff]/80 group-hover:bg-[#00e5ff]'
+                    : 'bg-[#7ab800]/65 group-hover:bg-[#b8ff01]/80'
+                }`}
+              />
+            );
+          })}
+        </div>
+
+        {/* Right Subtle Tail Line */}
+        <div className="w-[10%] h-[1px] bg-white/10" />
+      </div>
+
+      {/* Left: Currently Playing Track Info */}
+      <div className="relative z-10 w-72 flex items-center gap-3.5 min-w-0">
         {currentTrack ? (
           <>
-            <div className="relative w-14 h-14 bg-[#0a0b0e] border border-[#a3e635] shadow-[2px_2px_0px_#a3e635] shrink-0 overflow-hidden">
+            <div className="w-12 h-12 rounded-lg bg-[#14171c] overflow-hidden shrink-0 shadow-md">
               <TrackArtwork
                 track={currentTrack}
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="font-display font-bold text-sm text-white truncate">
+              <div className="font-display font-bold text-[14px] text-white truncate">
                 {currentTrack.title}
               </div>
-              <div className="text-xs text-zinc-400 truncate mt-0.5">
+              <div className="text-[12px] text-zinc-400 truncate mt-0.5">
                 {currentTrack.artist}
               </div>
-              <div className="font-mono text-[10px] text-[#a3e635] mt-1 flex items-center gap-1.5">
-                <span
-                  className={`w-1.5 h-1.5 bg-[#a3e635] rounded-full ${
-                    isPlaying ? 'animate-ping' : ''
-                  }`}
-                />
-                <span>
-                  {isLoadingStream
-                    ? 'BUFFERING SIGNAL...'
-                    : isPlaying
-                    ? 'STREAM LOCKED'
-                    : 'STREAM PAUSED'}
-                </span>
-              </div>
             </div>
-            <motion.button
-              whileTap={{ scale: 0.85 }}
-              onClick={() => toggleFavorite(currentTrack)}
-              className={`p-2 border cursor-pointer transition-colors ${
-                isFav
-                  ? 'bg-[#a3e635]/15 border-[#a3e635] text-[#a3e635]'
-                  : 'bg-[#151822] border-[#232736] text-zinc-400 hover:text-white'
-              }`}
-            >
-              <Heart className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`} />
-            </motion.button>
           </>
         ) : (
-          <div className="flex items-center gap-3 text-zinc-500">
-            <div className="w-14 h-14 bg-[#12141c] border border-[#232736] flex items-center justify-center">
-              <Disc className="w-6 h-6 text-zinc-600" />
+          <div className="flex items-center gap-3.5 text-zinc-500">
+            <div className="w-12 h-12 rounded-lg bg-[#14171c] border border-white/[0.06] flex items-center justify-center">
+              <Disc className="w-5 h-5 text-zinc-600" />
             </div>
             <div>
-              <div className="font-display font-semibold text-sm text-zinc-400">
-                STANDBY MODE
+              <div className="font-display font-bold text-[14px] text-zinc-300">
+                Ready to Stream
               </div>
-              <div className="font-mono text-[11px] text-zinc-600">
-                Select any track to engage
-              </div>
+              <div className="text-[12px] text-zinc-500">Select a track</div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Center: Tactile Transport Deck + Illuminated Waveform Scrubber */}
-      <div className="flex-1 max-w-2xl flex flex-col items-center gap-2">
-        <div className="flex items-center gap-3">
-          <motion.button
-            whileTap={{ scale: 0.88 }}
-            onClick={toggleShuffle}
-            className={`p-2 border cursor-pointer transition-colors ${
-              shuffle
-                ? 'bg-[#a3e635]/15 border-[#a3e635] text-[#a3e635]'
-                : 'bg-transparent border-transparent text-zinc-400 hover:text-white'
-            }`}
-            title="Shuffle"
-          >
-            <Shuffle className="w-4 h-4" />
-          </motion.button>
+      {/* Center: Clean Classic Transport Controls with White Circular Play Button */}
+      <div className="relative z-10 flex items-center gap-6">
+        <button
+          onClick={toggleShuffle}
+          aria-label="Toggle shuffle"
+          className={`transition-colors cursor-pointer ${
+            shuffle ? 'text-[#b8ff01]' : 'text-zinc-400 hover:text-white'
+          }`}
+          title="Shuffle"
+        >
+          <Shuffle className="w-[17px] h-[17px]" />
+        </button>
 
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={prevTrack}
-            className="p-2 bg-[#141720] hover:bg-[#1c202d] text-zinc-200 border border-[#232736] cursor-pointer transition-colors"
-            title="Previous"
-          >
-            <SkipBack className="w-4 h-4 fill-current" />
-          </motion.button>
+        <button
+          onClick={prevTrack}
+          aria-label="Previous track"
+          className="text-zinc-200 hover:text-white transition-colors cursor-pointer"
+          title="Previous"
+        >
+          <SkipBack className="w-5 h-5 fill-current" />
+        </button>
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.92 }}
-            onClick={togglePlay}
-            disabled={!currentTrack && queue.length === 0}
-            className="neo-btn w-11 h-11 bg-[#a3e635] text-[#0a0b0e] border border-[#a3e635] flex items-center justify-center cursor-pointer disabled:opacity-40"
-            title="Play / Pause (Space)"
-          >
-            {isLoadingStream ? (
-              <Loader2 className="w-5 h-5 animate-spin stroke-[2.5]" />
-            ) : isPlaying ? (
-              <Pause className="w-5 h-5 fill-current" />
-            ) : (
-              <Play className="w-5 h-5 fill-current ml-0.5" />
-            )}
-          </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.06 }}
+          whileTap={{ scale: 0.94 }}
+          onClick={togglePlay}
+          disabled={!currentTrack && queue.length === 0}
+          aria-label="Play or pause"
+          className="w-12 h-12 rounded-full bg-white text-[#0b0c0e] shadow-[0_4px_20px_rgba(255,255,255,0.25)] flex items-center justify-center cursor-pointer disabled:opacity-40"
+          title="Play / Pause (Space)"
+        >
+          {isLoadingStream ? (
+            <Loader2 className="w-5 h-5 animate-spin stroke-[2.5]" />
+          ) : isPlaying ? (
+            <Pause className="w-5 h-5 fill-current" />
+          ) : (
+            <Play className="w-5 h-5 fill-current ml-0.5" />
+          )}
+        </motion.button>
 
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={nextTrack}
-            className="p-2 bg-[#141720] hover:bg-[#1c202d] text-zinc-200 border border-[#232736] cursor-pointer transition-colors"
-            title="Next"
-          >
-            <SkipForward className="w-4 h-4 fill-current" />
-          </motion.button>
+        <button
+          onClick={nextTrack}
+          aria-label="Next track"
+          className="text-zinc-200 hover:text-white transition-colors cursor-pointer"
+          title="Next"
+        >
+          <SkipForward className="w-5 h-5 fill-current" />
+        </button>
 
-          <motion.button
-            whileTap={{ scale: 0.88 }}
-            onClick={toggleRepeat}
-            className={`p-2 border cursor-pointer transition-colors ${
-              repeatMode !== 'off'
-                ? 'bg-[#a3e635]/15 border-[#a3e635] text-[#a3e635]'
-                : 'bg-transparent border-transparent text-zinc-400 hover:text-white'
-            }`}
-            title={`Repeat: ${repeatMode}`}
-          >
-            {repeatMode === 'one' ? (
-              <Repeat1 className="w-4 h-4" />
-            ) : (
-              <Repeat className="w-4 h-4" />
-            )}
-          </motion.button>
-        </div>
-
-        {/* Interactive Waveform Progress Scrubber */}
-        <div className="w-full flex items-center gap-3">
-          <span className="font-mono text-[11px] text-[#a3e635] w-10 text-right">
-            {formatDuration(currentTime)}
-          </span>
-
-          <div
-            onClick={handleSeek}
-            className="flex-1 h-7 bg-[#12141c] border border-[#232736] px-2 flex items-center justify-between gap-[2px] cursor-pointer group relative overflow-hidden"
-          >
-            {waveformBars.map((height, idx) => {
-              const barPercent = (idx / waveformBars.length) * 100;
-              const isPlayed = barPercent <= progressPercent;
-              return (
-                <div
-                  key={idx}
-                  style={{ height: `${currentTrack ? height : 20}%` }}
-                  className={`flex-1 transition-colors duration-100 ${
-                    isPlayed
-                      ? 'bg-[#a3e635] shadow-[0_0_6px_rgba(163,230,53,0.6)]'
-                      : 'bg-[#252a3a] group-hover:bg-zinc-600'
-                  }`}
-                />
-              );
-            })}
-          </div>
-
-          <span className="font-mono text-[11px] text-zinc-400 w-10">
-            {formatDuration(duration)}
-          </span>
-        </div>
+        <button
+          onClick={toggleRepeat}
+          aria-label="Toggle repeat"
+          className={`transition-colors cursor-pointer ${
+            repeatMode !== 'off'
+              ? 'text-[#b8ff01]'
+              : 'text-zinc-400 hover:text-white'
+          }`}
+          title={`Repeat: ${repeatMode}`}
+        >
+          {repeatMode === 'one' ? (
+            <Repeat1 className="w-[17px] h-[17px]" />
+          ) : (
+            <Repeat className="w-[17px] h-[17px]" />
+          )}
+        </button>
       </div>
 
-      {/* Right: Codec Badge, Volume Slider & Queue Drawer Toggle */}
-      <div className="w-72 flex items-center justify-end gap-3">
-        <div className="hidden xl:flex flex-col items-end font-mono text-[10px] leading-tight">
-          <span className="text-[#a3e635] font-semibold">137 KBPS</span>
-          <span className="text-zinc-500">AAC // MP4</span>
-        </div>
+      {/* Right: Sleek Volume Bar with Lime Fill & White Circular Thumb */}
+      <div className="relative z-10 w-72 flex items-center justify-end gap-3">
+        <button
+          onClick={toggleMute}
+          aria-label="Toggle mute"
+          className="text-zinc-300 hover:text-white transition-colors cursor-pointer"
+        >
+          {isMuted || volume === 0 ? (
+            <VolumeX className="w-[18px] h-[18px] text-zinc-500" />
+          ) : (
+            <Volume2 className="w-[18px] h-[18px]" />
+          )}
+        </button>
 
-        <div className="flex items-center gap-2 bg-[#12141c] border border-[#232736] px-2.5 py-1.5">
-          <button
-            onClick={toggleMute}
-            className="text-zinc-400 hover:text-[#a3e635] cursor-pointer"
-          >
-            {isMuted || volume === 0 ? (
-              <VolumeX className="w-4 h-4 text-red-400" />
-            ) : (
-              <Volume2 className="w-4 h-4" />
-            )}
-          </button>
+        <div className="relative w-28 h-5 flex items-center">
+          <div className="w-full h-[3px] rounded-full bg-white/15 overflow-hidden">
+            <div
+              style={{ width: `${effectiveVolume * 100}%` }}
+              className="h-full bg-[#b8ff01]"
+            />
+          </div>
+          <div
+            style={{ left: `calc(${effectiveVolume * 100}% - 7px)` }}
+            className="w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.6)] pointer-events-none absolute"
+          />
           <input
             type="range"
             min={0}
             max={1}
             step={0.01}
-            value={isMuted ? 0 : volume}
+            value={effectiveVolume}
+            aria-label="Volume"
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-20 accent-[#a3e635] cursor-pointer h-1 bg-[#232736]"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
         </div>
-
-        <motion.button
-          whileTap={{ scale: 0.92 }}
-          onClick={() => setQueueOpen(!isQueueOpen)}
-          className={`px-3 py-2 border font-mono text-xs flex items-center gap-2 cursor-pointer transition-colors ${
-            isQueueOpen
-              ? 'bg-[#a3e635] text-[#0a0b0e] border-[#a3e635] font-bold shadow-[2px_2px_0px_#22d3ee]'
-              : 'bg-[#12141c] text-zinc-300 border-[#232736] hover:border-[#a3e635]'
-          }`}
-        >
-          <ListMusic className="w-4 h-4" />
-          <span>{queue.length}</span>
-        </motion.button>
       </div>
     </footer>
   );
