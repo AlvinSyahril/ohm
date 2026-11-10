@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { motion } from 'framer-motion';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Play,
   Pause,
@@ -12,9 +11,11 @@ import {
   VolumeX,
   Loader2,
   Disc,
+  Heart,
+  ListMusic,
 } from 'lucide-react';
 import { usePlayerStore } from '../store/usePlayerStore';
-import { TrackArtwork } from './TrackCard';
+import { TrackArtwork, formatDuration } from './TrackCard';
 
 export const PlayerBar: React.FC = () => {
   const {
@@ -28,6 +29,10 @@ export const PlayerBar: React.FC = () => {
     repeatMode,
     shuffle,
     queue,
+    favorites,
+    isQueueOpen,
+    setQueueOpen,
+    toggleFavorite,
     togglePlay,
     setIsPlaying,
     setIsLoadingStream,
@@ -43,24 +48,18 @@ export const PlayerBar: React.FC = () => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const isSwitchingTrackRef = useRef<boolean>(false);
+  const [hoverRatio, setHoverRatio] = useState<number | null>(null);
 
-  // Generate 120 center-symmetric waveform bars matching the concept image
+  // Generate 72 crisp geometric bar heights for the track waveform
   const waveformBars = useMemo(() => {
-    const seed = currentTrack?.id || 'ohm-default-wave';
-    const total = 120;
+    const seed = currentTrack?.id || 'ohm-studio-wave';
+    const total = 72;
     return Array.from({ length: total }, (_, i) => {
-      // Create organic envelope that swells in the middle-left and middle-right like the concept
       const norm = i / total;
-      const envelope =
-        Math.sin(norm * Math.PI) *
-        (0.55 + 0.45 * Math.sin(norm * Math.PI * 5 + 0.8));
-      const charCode = seed.charCodeAt(i % seed.length) || 70;
-      const pseudoRand = ((charCode * (i + 13) * 29) % 100) / 100;
-      const heightPx = Math.max(
-        3,
-        Math.round((envelope * 0.72 + pseudoRand * 0.28) * 28)
-      );
-      return heightPx;
+      const env = Math.sin(norm * Math.PI) * 0.65 + 0.35;
+      const code = seed.charCodeAt(i % seed.length) || 70;
+      const rand = ((code * (i + 17) * 31) % 100) / 100;
+      return Math.max(20, Math.min(100, Math.round((env * 0.6 + rand * 0.4) * 100)));
     });
   }, [currentTrack?.id]);
 
@@ -134,11 +133,14 @@ export const PlayerBar: React.FC = () => {
   };
 
   const progressPercent =
-    duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 45;
+    duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const effectiveVolume = isMuted ? 0 : volume;
+  const isFav = currentTrack
+    ? favorites.some((t) => t.id === currentTrack.id)
+    : false;
 
   return (
-    <footer className="relative h-[88px] bg-[#0c0e12]/95 backdrop-blur-xl px-7 flex items-center justify-between gap-6 select-none z-30 shrink-0">
+    <footer className="h-20 bg-[#090a0c] border-t border-white/[0.08] px-5 flex items-center justify-between gap-6 select-none z-30 shrink-0">
       <audio
         ref={audioRef}
         preload="auto"
@@ -179,176 +181,189 @@ export const PlayerBar: React.FC = () => {
         }}
       />
 
-      {/* Ambient Radial Lime & Cyan Underglow (Exact Match to Concept Image) */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-6 left-[24%] w-72 h-28 bg-[#b8ff01]/20 blur-[36px] rounded-full" />
-        <div className="absolute -top-6 left-[60%] w-64 h-28 bg-[#00e5ff]/15 blur-[36px] rounded-full" />
-      </div>
-
-      {/* Top Edge Full-Width Interactive Waveform Scrubber */}
-      <div
-        onClick={handleSeek}
-        title="Click anywhere along the waveform to seek"
-        className="absolute -top-[15px] left-0 right-0 h-[30px] flex items-center cursor-pointer z-40 group"
-      >
-        {/* Left Solid Lime Lead-In Line */}
-        <div className="w-[18%] h-[2px] bg-[#b8ff01] shadow-[0_0_8px_#b8ff01]" />
-
-        {/* Center Symmetric Soundwave Bars */}
-        <div className="flex-1 h-full flex items-center justify-between gap-[2px] px-1">
-          {waveformBars.map((barHeight, idx) => {
-            const pct = (idx / waveformBars.length) * 100;
-            const isPlayed = pct <= progressPercent;
-            const isCyanZone = pct > 68;
-
-            return (
-              <div
-                key={idx}
-                style={{ height: `${barHeight}px` }}
-                className={`w-[2px] rounded-full transition-all duration-150 ${
-                  isPlaying && isPlayed ? 'waveform-playing' : ''
-                } ${
-                  isPlayed
-                    ? 'bg-[#b8ff01] shadow-[0_0_8px_rgba(184,255,1,0.75)]'
-                    : isCyanZone
-                    ? 'bg-[#00e5ff]/80 group-hover:bg-[#00e5ff]'
-                    : 'bg-[#7ab800]/65 group-hover:bg-[#b8ff01]/80'
-                }`}
-              />
-            );
-          })}
-        </div>
-
-        {/* Right Subtle Tail Line */}
-        <div className="w-[10%] h-[1px] bg-white/10" />
-      </div>
-
-      {/* Left: Currently Playing Track Info */}
-      <div className="relative z-10 w-72 flex items-center gap-3.5 min-w-0">
+      {/* Left: Active Track Metadata */}
+      <div className="w-72 flex items-center gap-3 min-w-0">
         {currentTrack ? (
           <>
-            <div className="w-12 h-12 rounded-lg bg-[#14171c] overflow-hidden shrink-0 shadow-md">
+            <div className="w-12 h-12 rounded bg-[#111318] border border-white/[0.08] overflow-hidden shrink-0">
               <TrackArtwork
                 track={currentTrack}
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="font-display font-bold text-[14px] text-white truncate">
+              <div className="font-display font-semibold text-[13px] text-white truncate">
                 {currentTrack.title}
               </div>
-              <div className="text-[12px] text-zinc-400 truncate mt-0.5">
+              <div className="text-[11px] text-zinc-400 truncate mt-0.5">
                 {currentTrack.artist}
               </div>
             </div>
+            <button
+              onClick={() => toggleFavorite(currentTrack)}
+              className={`p-1.5 rounded transition-colors cursor-pointer shrink-0 ${
+                isFav
+                  ? 'text-[#c8ff00]'
+                  : 'text-zinc-500 hover:text-white'
+              }`}
+              title="Save to Library"
+            >
+              <Heart className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`} />
+            </button>
           </>
         ) : (
-          <div className="flex items-center gap-3.5 text-zinc-500">
-            <div className="w-12 h-12 rounded-lg bg-[#14171c] border border-white/[0.06] flex items-center justify-center">
+          <div className="flex items-center gap-3 text-zinc-500">
+            <div className="w-12 h-12 rounded bg-[#0f1115] border border-white/[0.06] flex items-center justify-center">
               <Disc className="w-5 h-5 text-zinc-600" />
             </div>
             <div>
-              <div className="font-display font-bold text-[14px] text-zinc-300">
-                Ready to Stream
+              <div className="font-display font-medium text-[13px] text-zinc-400">
+                No Active Stream
               </div>
-              <div className="text-[12px] text-zinc-500">Select a track</div>
+              <div className="font-mono text-[10px] text-zinc-600 uppercase">
+                Ready
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Center: Clean Classic Transport Controls with White Circular Play Button */}
-      <div className="relative z-10 flex items-center gap-6">
-        <button
-          onClick={toggleShuffle}
-          aria-label="Toggle shuffle"
-          className={`transition-colors cursor-pointer ${
-            shuffle ? 'text-[#b8ff01]' : 'text-zinc-400 hover:text-white'
-          }`}
-          title="Shuffle"
-        >
-          <Shuffle className="w-[17px] h-[17px]" />
-        </button>
+      {/* Center: Transport Controls + Flat Geometric Waveform Scrubber */}
+      <div className="flex-1 max-w-xl flex flex-col items-center gap-1.5">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={toggleShuffle}
+            aria-label="Toggle shuffle"
+            className={`p-1 transition-colors cursor-pointer ${
+              shuffle ? 'text-[#c8ff00]' : 'text-zinc-500 hover:text-white'
+            }`}
+            title="Shuffle"
+          >
+            <Shuffle className="w-3.5 h-3.5" />
+          </button>
 
-        <button
-          onClick={prevTrack}
-          aria-label="Previous track"
-          className="text-zinc-200 hover:text-white transition-colors cursor-pointer"
-          title="Previous"
-        >
-          <SkipBack className="w-5 h-5 fill-current" />
-        </button>
+          <button
+            onClick={prevTrack}
+            aria-label="Previous track"
+            className="p-1 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+            title="Previous"
+          >
+            <SkipBack className="w-4 h-4 fill-current" />
+          </button>
 
-        <motion.button
-          whileHover={{ scale: 1.06 }}
-          whileTap={{ scale: 0.94 }}
-          onClick={togglePlay}
-          disabled={!currentTrack && queue.length === 0}
-          aria-label="Play or pause"
-          className="w-12 h-12 rounded-full bg-white text-[#0b0c0e] shadow-[0_4px_20px_rgba(255,255,255,0.25)] flex items-center justify-center cursor-pointer disabled:opacity-40"
-          title="Play / Pause (Space)"
-        >
-          {isLoadingStream ? (
-            <Loader2 className="w-5 h-5 animate-spin stroke-[2.5]" />
-          ) : isPlaying ? (
-            <Pause className="w-5 h-5 fill-current" />
-          ) : (
-            <Play className="w-5 h-5 fill-current ml-0.5" />
-          )}
-        </motion.button>
+          <button
+            onClick={togglePlay}
+            disabled={!currentTrack && queue.length === 0}
+            aria-label="Play or pause"
+            className="w-9 h-9 rounded-md bg-white hover:bg-[#c8ff00] text-[#090a0c] flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40"
+            title="Play / Pause (Space)"
+          >
+            {isLoadingStream ? (
+              <Loader2 className="w-4 h-4 animate-spin stroke-[2.5]" />
+            ) : isPlaying ? (
+              <Pause className="w-4 h-4 fill-current" />
+            ) : (
+              <Play className="w-4 h-4 fill-current ml-0.5" />
+            )}
+          </button>
 
-        <button
-          onClick={nextTrack}
-          aria-label="Next track"
-          className="text-zinc-200 hover:text-white transition-colors cursor-pointer"
-          title="Next"
-        >
-          <SkipForward className="w-5 h-5 fill-current" />
-        </button>
+          <button
+            onClick={nextTrack}
+            aria-label="Next track"
+            className="p-1 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+            title="Next"
+          >
+            <SkipForward className="w-4 h-4 fill-current" />
+          </button>
 
-        <button
-          onClick={toggleRepeat}
-          aria-label="Toggle repeat"
-          className={`transition-colors cursor-pointer ${
-            repeatMode !== 'off'
-              ? 'text-[#b8ff01]'
-              : 'text-zinc-400 hover:text-white'
-          }`}
-          title={`Repeat: ${repeatMode}`}
-        >
-          {repeatMode === 'one' ? (
-            <Repeat1 className="w-[17px] h-[17px]" />
-          ) : (
-            <Repeat className="w-[17px] h-[17px]" />
-          )}
-        </button>
+          <button
+            onClick={toggleRepeat}
+            aria-label="Toggle repeat"
+            className={`p-1 transition-colors cursor-pointer ${
+              repeatMode !== 'off'
+                ? 'text-[#c8ff00]'
+                : 'text-zinc-500 hover:text-white'
+            }`}
+            title={`Repeat: ${repeatMode}`}
+          >
+            {repeatMode === 'one' ? (
+              <Repeat1 className="w-3.5 h-3.5" />
+            ) : (
+              <Repeat className="w-3.5 h-3.5" />
+            )}
+          </button>
+        </div>
+
+        {/* Precision Flat Waveform Scrubber with Time Readouts */}
+        <div className="w-full flex items-center gap-3">
+          <span className="font-mono text-[11px] text-zinc-400 tabular-nums w-9 text-right">
+            {hoverRatio !== null && duration > 0
+              ? formatDuration(hoverRatio * duration)
+              : formatDuration(currentTime)}
+          </span>
+
+          <div
+            onClick={handleSeek}
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const r = Math.max(
+                0,
+                Math.min(1, (e.clientX - rect.left) / rect.width)
+              );
+              setHoverRatio(r);
+            }}
+            onMouseLeave={() => setHoverRatio(null)}
+            className="flex-1 h-5 flex items-center justify-between gap-[2px] cursor-pointer group"
+          >
+            {waveformBars.map((heightPct, idx) => {
+              const barPct = (idx / waveformBars.length) * 100;
+              const isPlayed = barPct <= progressPercent;
+              const isHovered =
+                hoverRatio !== null && barPct <= hoverRatio * 100;
+
+              return (
+                <div
+                  key={idx}
+                  style={{ height: `${currentTrack ? heightPct : 25}%` }}
+                  className={`flex-1 rounded-[1px] transition-colors duration-75 ${
+                    isPlayed
+                      ? 'bg-[#c8ff00]'
+                      : isHovered
+                      ? 'bg-zinc-400'
+                      : 'bg-white/[0.12] group-hover:bg-white/[0.18]'
+                  }`}
+                />
+              );
+            })}
+          </div>
+
+          <span className="font-mono text-[11px] text-zinc-500 tabular-nums w-9">
+            {formatDuration(duration)}
+          </span>
+        </div>
       </div>
 
-      {/* Right: Sleek Volume Bar with Lime Fill & White Circular Thumb */}
-      <div className="relative z-10 w-72 flex items-center justify-end gap-3">
+      {/* Right: Volume & Queue Controls */}
+      <div className="w-72 flex items-center justify-end gap-3">
         <button
           onClick={toggleMute}
           aria-label="Toggle mute"
-          className="text-zinc-300 hover:text-white transition-colors cursor-pointer"
+          className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
         >
           {isMuted || volume === 0 ? (
-            <VolumeX className="w-[18px] h-[18px] text-zinc-500" />
+            <VolumeX className="w-4 h-4 text-zinc-500" />
           ) : (
-            <Volume2 className="w-[18px] h-[18px]" />
+            <Volume2 className="w-4 h-4" />
           )}
         </button>
 
-        <div className="relative w-28 h-5 flex items-center">
-          <div className="w-full h-[3px] rounded-full bg-white/15 overflow-hidden">
+        <div className="relative w-24 h-4 flex items-center">
+          <div className="w-full h-1 bg-white/[0.12] rounded-sm overflow-hidden">
             <div
               style={{ width: `${effectiveVolume * 100}%` }}
-              className="h-full bg-[#b8ff01]"
+              className="h-full bg-white"
             />
           </div>
-          <div
-            style={{ left: `calc(${effectiveVolume * 100}% - 7px)` }}
-            className="w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.6)] pointer-events-none absolute"
-          />
           <input
             type="range"
             min={0}
@@ -360,6 +375,19 @@ export const PlayerBar: React.FC = () => {
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
         </div>
+
+        <button
+          onClick={() => setQueueOpen(!isQueueOpen)}
+          className={`px-2.5 py-1 rounded border font-mono text-[11px] flex items-center gap-1.5 cursor-pointer transition-colors ${
+            isQueueOpen
+              ? 'bg-white/[0.1] border-white/[0.2] text-white'
+              : 'bg-transparent border-white/[0.08] text-zinc-400 hover:text-white'
+          }`}
+          title="Toggle Queue & Inspector"
+        >
+          <ListMusic className="w-3.5 h-3.5" />
+          <span className="tabular-nums">{queue.length}</span>
+        </button>
       </div>
     </footer>
   );

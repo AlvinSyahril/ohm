@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { Play, Pause, Plus, Heart, Check } from 'lucide-react';
 import { Track, usePlayerStore } from '../store/usePlayerStore';
 
@@ -7,7 +6,6 @@ interface TrackCardProps {
   track: Track;
   index: number;
   contextQueue?: Track[];
-  genreLabel?: string;
 }
 
 export const formatDuration = (seconds?: number): string => {
@@ -58,7 +56,6 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   track,
   index,
   contextQueue,
-  genreLabel = 'Genre',
 }) => {
   const {
     currentTrack,
@@ -89,41 +86,56 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{
-        type: 'spring',
-        stiffness: 380,
-        damping: 30,
-        delay: Math.min(index * 0.025, 0.25),
-      }}
+    <div
       onClick={handlePlayClick}
-      className={`group relative rounded-[16px] p-3 cursor-pointer select-none flex flex-col justify-between transition-all duration-200 ${
+      className={`group relative rounded-lg p-3 cursor-pointer select-none flex flex-col justify-between transition-colors duration-150 ${
         isCurrent
-          ? 'bg-[#181c22] border border-[#b8ff01]/70 shadow-[0_0_24px_rgba(184,255,1,0.12)]'
-          : 'bg-[#14171c] border border-white/[0.06] hover:bg-[#181c22] hover:border-white/[0.14] hover:-translate-y-0.5'
+          ? 'bg-[#15181f] border border-[#c8ff00]'
+          : 'bg-[#0f1115] border border-white/[0.06] hover:bg-[#14171d] hover:border-white/[0.14]'
       }`}
     >
-      {/* Square Rounded Album Artwork */}
-      <div className="relative aspect-square w-full rounded-[11px] bg-[#0b0c0e] overflow-hidden mb-3">
+      {/* Square Album Artwork */}
+      <div className="relative aspect-square w-full rounded-md bg-[#090a0c] overflow-hidden mb-3 border border-white/[0.04]">
         <TrackArtwork
           track={track}
-          className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300 ease-out"
+          className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-200 ease-out"
         />
 
-        {/* Quick Top-Right Hover Actions (Vault & Queue) */}
+        {/* Active Playing Indicator Badge */}
+        {isCurrent && (
+          <div className="absolute top-2 left-2 px-1.5 py-1 rounded bg-[#090a0c]/90 border border-white/[0.12] flex items-center gap-1.5">
+            <div className="flex items-end gap-[2px] h-2.5 w-3">
+              <span
+                className={`w-[2px] bg-[#c8ff00] ${
+                  isCurrentlyPlaying ? 'eq-bar-1' : 'h-1'
+                }`}
+              />
+              <span
+                className={`w-[2px] bg-[#c8ff00] ${
+                  isCurrentlyPlaying ? 'eq-bar-2' : 'h-2'
+                }`}
+              />
+              <span
+                className={`w-[2px] bg-[#c8ff00] ${
+                  isCurrentlyPlaying ? 'eq-bar-3' : 'h-1.5'
+                }`}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Quick Top-Right Hover Actions */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10"
+          className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10"
         >
           <button
             onClick={() => toggleFavorite(track)}
             title={isFav ? 'Remove from Library' : 'Save to Library'}
-            className={`w-7 h-7 rounded-full backdrop-blur-md flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-7 h-7 rounded flex items-center justify-center border transition-colors cursor-pointer ${
               isFav
-                ? 'bg-[#b8ff01] text-[#0b0c0e]'
-                : 'bg-black/60 text-white hover:bg-black/80'
+                ? 'bg-[#c8ff00] border-[#c8ff00] text-[#090a0c]'
+                : 'bg-[#090a0c]/85 border-white/[0.15] text-white hover:border-white/40'
             }`}
           >
             <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
@@ -132,63 +144,57 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           <button
             onClick={() => addToQueue(track)}
             title={inQueue ? 'In Queue' : 'Add to Queue'}
-            className={`w-7 h-7 rounded-full backdrop-blur-md flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-7 h-7 rounded flex items-center justify-center border transition-colors cursor-pointer ${
               inQueue
-                ? 'bg-[#00e5ff] text-[#0b0c0e]'
-                : 'bg-black/60 text-white hover:bg-black/80'
+                ? 'bg-white border-white text-[#090a0c]'
+                : 'bg-[#090a0c]/85 border-white/[0.15] text-white hover:border-white/40'
             }`}
           >
             {inQueue ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
           </button>
         </div>
 
-        {/* Center Play Overlay on Hover or Active */}
-        <div
-          className={`absolute inset-0 bg-black/35 flex items-center justify-center transition-opacity duration-150 ${
-            isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        {/* Bottom-Right Play Button on Hover */}
+        <button
+          onClick={handlePlayClick}
+          aria-label={isCurrentlyPlaying ? 'Pause' : 'Play'}
+          className={`absolute bottom-2 right-2 w-9 h-9 rounded-md bg-[#c8ff00] text-[#090a0c] flex items-center justify-center transition-all duration-150 cursor-pointer ${
+            isCurrent
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0'
           }`}
         >
-          <motion.button
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.92 }}
-            onClick={handlePlayClick}
-            className="w-11 h-11 rounded-full bg-[#b8ff01] text-[#0b0c0e] shadow-[0_4px_16px_rgba(0,0,0,0.5)] flex items-center justify-center cursor-pointer"
-          >
-            {isCurrentlyPlaying ? (
-              <Pause className="w-5 h-5 fill-current" />
-            ) : (
-              <Play className="w-5 h-5 fill-current ml-0.5" />
-            )}
-          </motion.button>
-        </div>
+          {isCurrentlyPlaying ? (
+            <Pause className="w-4 h-4 fill-current" />
+          ) : (
+            <Play className="w-4 h-4 fill-current ml-0.5" />
+          )}
+        </button>
       </div>
 
-      {/* Card Typography Matching Concept */}
-      <div className="px-0.5">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-zinc-500 truncate">
-          {track.artist}
-        </div>
+      {/* Clean Editorial Typography */}
+      <div>
         <h3
-          className={`font-display font-bold text-[13px] uppercase tracking-tight truncate mt-0.5 ${
-            isCurrent ? 'text-[#b8ff01]' : 'text-white'
+          className={`font-display font-semibold text-[13px] tracking-tight truncate ${
+            isCurrent ? 'text-[#c8ff00]' : 'text-zinc-100 group-hover:text-white'
           }`}
           title={track.title}
         >
           {track.title}
         </h3>
+        <div className="text-[12px] text-zinc-400 truncate mt-0.5">
+          {track.artist}
+        </div>
 
-        <div className="mt-2.5 flex items-center justify-between gap-2">
-          <span className="text-[11px] text-zinc-500 truncate">
-            {track.duration
-              ? `${formatDuration(track.duration)} mins`
-              : `${(index % 12) + 18} minutes ago`}
+        <div className="mt-2.5 pt-2 border-t border-white/[0.05] flex items-center justify-between gap-2 font-mono text-[10px] text-zinc-500">
+          <span className="truncate uppercase">
+            {track.album || 'Single'}
           </span>
-
-          <span className="px-2.5 py-0.5 rounded-full bg-[#b8ff01] text-[#0b0c0e] text-[10px] font-bold tracking-tight shrink-0">
-            {genreLabel}
+          <span className="tabular-nums shrink-0 text-zinc-400">
+            {formatDuration(track.duration)}
           </span>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };

@@ -1,6 +1,5 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Trash2, Play, ListMusic } from 'lucide-react';
+import { X, Trash2, Play, Heart, Disc } from 'lucide-react';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { TrackArtwork, formatDuration } from './TrackCard';
 
@@ -9,131 +8,152 @@ export const QueueDrawer: React.FC = () => {
     isQueueOpen,
     setQueueOpen,
     currentTrack,
+    isPlaying,
+    searchResults,
     queue,
+    favorites,
+    toggleFavorite,
     playTrack,
     removeFromQueue,
     clearQueue,
   } = usePlayerStore();
 
+  if (!isQueueOpen) return null;
+
+  const displayTrack = currentTrack || searchResults[0] || null;
+  const isFav = displayTrack
+    ? favorites.some((t) => t.id === displayTrack.id)
+    : false;
+
   return (
-    <AnimatePresence>
-      {isQueueOpen && (
-        <motion.aside
-          initial={{ x: '100%' }}
-          animate={{ x: 0 }}
-          exit={{ x: '100%' }}
-          transition={{ type: 'spring', stiffness: 400, damping: 35 }}
-          className="fixed top-0 right-0 bottom-24 w-88 bg-[#0d0f14] border-l border-[#232736] shadow-[-8px_0_24px_rgba(0,0,0,0.6)] z-40 flex flex-col select-none"
+    <aside className="hidden lg:flex w-76 h-full bg-[#090a0c] border-l border-white/[0.07] flex-col select-none shrink-0">
+      {/* Inspector Header */}
+      <div className="h-14 px-4 border-b border-white/[0.07] flex items-center justify-between shrink-0">
+        <span className="font-mono text-[11px] uppercase tracking-widest text-zinc-400">
+          {currentTrack ? 'Now Playing' : 'Signal Preview'}
+        </span>
+        <button
+          onClick={() => setQueueOpen(false)}
+          className="p-1 text-zinc-500 hover:text-white cursor-pointer"
+          title="Close Inspector"
         >
-          {/* Drawer Header */}
-          <div className="p-4 border-b border-[#232736] flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ListMusic className="w-4 h-4 text-[#a3e635]" />
-              <span className="font-display font-bold text-sm tracking-wider uppercase text-white">
-                Signal Pipeline ({queue.length})
-              </span>
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Active Track Studio Card */}
+      <div className="p-4 border-b border-white/[0.07] space-y-3.5 shrink-0">
+        {displayTrack ? (
+          <>
+            <div className="aspect-square w-full rounded-md bg-[#0f1115] border border-white/[0.06] overflow-hidden relative">
+              <TrackArtwork
+                track={displayTrack}
+                className="w-full h-full object-cover"
+              />
             </div>
 
-            <div className="flex items-center gap-2">
-              {queue.length > 0 && (
-                <button
-                  onClick={clearQueue}
-                  className="px-2 py-1 bg-[#171a24] hover:bg-red-500/20 text-zinc-400 hover:text-red-400 border border-[#232736] font-mono text-[10px] cursor-pointer transition-colors"
-                >
-                  CLEAR
-                </button>
-              )}
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-display font-bold text-[15px] text-white truncate">
+                  {displayTrack.title}
+                </h3>
+                <p className="text-[12px] text-zinc-400 truncate mt-0.5">
+                  {displayTrack.artist}
+                </p>
+              </div>
               <button
-                onClick={() => setQueueOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+                onClick={() => toggleFavorite(displayTrack)}
+                className={`p-1.5 rounded border cursor-pointer transition-colors shrink-0 ${
+                  isFav
+                    ? 'bg-[#c8ff00] border-[#c8ff00] text-[#090a0c]'
+                    : 'bg-white/[0.04] border-white/[0.08] text-zinc-400 hover:text-white'
+                }`}
               >
-                <X className="w-4 h-4" />
+                <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
               </button>
             </div>
-          </div>
 
-          {/* Drawer Body */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-5">
-            {currentTrack && (
-              <div>
-                <div className="font-mono text-[10px] text-[#a3e635] uppercase tracking-widest mb-2">
-                  Now Transmitting
-                </div>
-                <div className="p-2.5 bg-[#161b26] border border-[#a3e635] shadow-[3px_3px_0px_#a3e635] flex items-center gap-3">
-                  <TrackArtwork
-                    track={currentTrack}
-                    className="w-10 h-10 object-cover border border-[#232736]"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-display font-bold text-xs text-white truncate">
-                      {currentTrack.title}
+            {/* Flat Hardware Audio Telemetry Strip */}
+            <div className="p-2.5 rounded bg-[#0f1115] border border-white/[0.06] flex items-center justify-between font-mono text-[10px]">
+              <span className="text-zinc-500">STREAM FORMAT</span>
+              <span className="text-zinc-200">AAC 256 · 44.1kHz</span>
+            </div>
+          </>
+        ) : (
+          <div className="aspect-square w-full rounded-md bg-[#0f1115] border border-white/[0.06] flex flex-col items-center justify-center gap-2 text-zinc-600">
+            <Disc className="w-8 h-8" />
+            <span className="font-mono text-[11px]">NO SIGNAL</span>
+          </div>
+        )}
+      </div>
+
+      {/* Integrated Up Next Queue List */}
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="px-4 py-2.5 border-b border-white/[0.05] flex items-center justify-between shrink-0">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+            Up Next ({queue.length})
+          </span>
+          {queue.length > 0 && (
+            <button
+              onClick={clearQueue}
+              className="font-mono text-[10px] text-zinc-500 hover:text-red-400 cursor-pointer uppercase"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {queue.length === 0 ? (
+            <div className="p-6 text-center text-xs text-zinc-500">
+              Play any track or click + to build your queue.
+            </div>
+          ) : (
+            queue.map((track, idx) => (
+              <div
+                key={`${track.id}-${idx}`}
+                onClick={() => playTrack(track, queue.slice(idx + 1))}
+                className="p-2 rounded-md hover:bg-white/[0.04] flex items-center justify-between gap-2.5 cursor-pointer group transition-colors"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="relative w-8 h-8 rounded shrink-0 bg-[#0f1115] overflow-hidden border border-white/[0.06]">
+                    <TrackArtwork
+                      track={track}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                      <Play className="w-3 h-3 text-[#c8ff00] fill-current" />
                     </div>
-                    <div className="text-[11px] text-[#a3e635] truncate">
-                      {currentTrack.artist}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-display font-medium text-[12px] text-zinc-200 group-hover:text-white truncate">
+                      {track.title}
+                    </div>
+                    <div className="text-[11px] text-zinc-500 truncate">
+                      {track.artist}
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
 
-            <div>
-              <div className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest mb-2">
-                Up Next
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
+                    {formatDuration(track.duration)}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeFromQueue(track.id);
+                    }}
+                    className="p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
-              {queue.length === 0 ? (
-                <div className="p-6 border border-dashed border-[#232736] text-center font-mono text-xs text-zinc-500">
-                  Queue is empty. Add tracks with + to line them up.
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  {queue.map((track, idx) => (
-                    <div
-                      key={`${track.id}-${idx}`}
-                      onClick={() => playTrack(track, queue.slice(idx + 1))}
-                      className="p-2 bg-[#12141c] hover:bg-[#181c28] border border-[#232736] hover:border-[#a3e635] flex items-center justify-between gap-2.5 cursor-pointer group transition-colors"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="relative w-9 h-9 shrink-0 bg-[#0a0b0e] border border-[#232736] overflow-hidden">
-                          <TrackArtwork
-                            track={track}
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                            <Play className="w-3.5 h-3.5 text-[#a3e635] fill-current" />
-                          </div>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-display font-semibold text-xs text-zinc-200 group-hover:text-[#a3e635] truncate">
-                            {track.title}
-                          </div>
-                          <div className="text-[11px] text-zinc-500 truncate">
-                            {track.artist}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-mono text-[10px] text-zinc-500">
-                          {formatDuration(track.duration)}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeFromQueue(track.id);
-                          }}
-                          className="p-1 text-zinc-500 hover:text-red-400 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </motion.aside>
-      )}
-    </AnimatePresence>
+            ))
+          )}
+        </div>
+      </div>
+    </aside>
   );
 };

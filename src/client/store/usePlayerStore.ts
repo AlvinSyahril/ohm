@@ -91,7 +91,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   repeatMode: 'off',
   shuffle: false,
   activeTab: 'discover',
-  isQueueOpen: false,
+  isQueueOpen: true,
   sfxEnabled: true,
   searchQuery: '',
   searchResults: [],
