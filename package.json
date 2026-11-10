@@ -1,31 +1,40 @@
 {
-  "name": "nuclear-redesign",
+  "name": "ohm-player",
   "version": "0.1.0",
   "private": true,
-  "description": "Lean web-first redesign of Nuclear music streaming player",
+  "description": "Ohm - Lean web-first streaming music player with dark Swiss minimalism and neo-brutalist aesthetics",
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "server:dev": "tsx watch src/server/index.ts",
     "server:build": "tsc -p tsconfig.server.json",
     "server:start": "node dist/server/index.js",
+    "build": "vite build",
+    "preview": "vite preview",
     "test:resolver": "tsx src/server/test-resolver.ts"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "youtubei.js": "^18.3.0"
+    "@tailwindcss/vite": "^4.0.9",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.3",
+    "framer-motion": "^12.4.7",
+    "lucide-react": "^0.475.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.9",
+    "youtubei.js": "^18.3.0",
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.13.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^6.2.0"
   }
 }
