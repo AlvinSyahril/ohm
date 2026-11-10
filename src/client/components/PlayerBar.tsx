@@ -16,7 +16,7 @@ import {
   Disc,
 } from 'lucide-react';
 import { usePlayerStore } from '../store/usePlayerStore';
-import { formatDuration, upgradeThumbnail } from './TrackCard';
+import { TrackArtwork, formatDuration } from './TrackCard';
 
 export const PlayerBar: React.FC = () => {
   const {
@@ -48,6 +48,8 @@ export const PlayerBar: React.FC = () => {
   } = usePlayerStore();
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const isSwitchingTrackRef = useRef<boolean>(false);
+
   const waveformBars = useMemo(() => {
     const seed = currentTrack?.id || 'ohm-default';
     return Array.from({ length: 56 }, (_, i) => {
@@ -63,22 +65,26 @@ export const PlayerBar: React.FC = () => {
     if (!audio || !currentTrack) return;
 
     const streamUrl = `/api/stream/${encodeURIComponent(currentTrack.id)}`;
-    if (audio.src !== window.location.origin + streamUrl) {
-      audio.src = streamUrl;
-      audio.load();
-    }
+    isSwitchingTrackRef.current = true;
+    audio.src = streamUrl;
+    audio.load();
 
-    if (isPlaying) {
-      audio.play().catch((err) => {
-        console.warn('Playback prevented or interrupted:', err);
+    audio
+      .play()
+      .then(() => {
+        isSwitchingTrackRef.current = false;
+        setIsLoadingStream(false);
+        setIsPlaying(true);
+      })
+      .catch(() => {
+        // Will be retried inside onCanPlay once stream headers arrive
       });
-    }
   }, [currentTrack?.id]);
 
-  // Sync play/pause state
+  // Sync play/pause toggle from store
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !currentTrack) return;
+    if (!audio || !currentTrack || isSwitchingTrackRef.current) return;
 
     if (isPlaying && audio.paused) {
       audio.play().catch(() => {});
@@ -116,30 +122,59 @@ export const PlayerBar: React.FC = () => {
     const targetTime = ratio * duration;
     audio.currentTime = targetTime;
     setCurrentTime(targetTime);
+    if (!isPlaying) {
+      setIsPlaying(true);
+      audio.play().catch(() => {});
+    }
   };
 
-  const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
-  const isFav = currentTrack ? favorites.some((t) => t.id === currentTrack.id) : false;
+  const progressPercent =
+    duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const isFav = currentTrack
+    ? favorites.some((t) => t.id === currentTrack.id)
+    : false;
 
   return (
     <footer className="h-24 bg-[#0d0f14] border-t border-[#232736] px-6 flex items-center justify-between gap-6 select-none z-30 shrink-0">
       <audio
         ref={audioRef}
+        preload="auto"
         onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => {
           if (e.currentTarget.duration && isFinite(e.currentTarget.duration)) {
             setDuration(e.currentTarget.duration);
           }
-          setIsLoadingStream(false);
         }}
-        onCanPlay={() => setIsLoadingStream(false)}
+        onCanPlay={(e) => {
+          isSwitchingTrackRef.current = false;
+          setIsLoadingStream(false);
+          if (usePlayerStore.getState().isPlaying && e.currentTarget.paused) {
+            e.currentTarget.play().catch(() => {});
+          }
+        }}
         onWaiting={() => setIsLoadingStream(true)}
         onPlaying={() => {
+          isSwitchingTrackRef.current = false;
           setIsLoadingStream(false);
           setIsPlaying(true);
         }}
-        onPause={() => setIsPlaying(false)}
-        onEnded={() => nextTrack()}
+        onPause={(e) => {
+          // Ignore automatic browser pause events triggered during track switching or track end
+          if (isSwitchingTrackRef.current || e.currentTarget.ended) return;
+          setIsPlaying(false);
+        }}
+        onError={() => {
+          isSwitchingTrackRef.current = false;
+          setIsLoadingStream(false);
+        }}
+        onEnded={(e) => {
+          if (usePlayerStore.getState().repeatMode === 'one') {
+            e.currentTarget.currentTime = 0;
+            e.currentTarget.play().catch(() => {});
+          } else {
+            nextTrack();
+          }
+        }}
       />
 
       {/* Left: Currently Playing Track Telemetry */}
@@ -147,9 +182,8 @@ export const PlayerBar: React.FC = () => {
         {currentTrack ? (
           <>
             <div className="relative w-14 h-14 bg-[#0a0b0e] border border-[#a3e635] shadow-[2px_2px_0px_#a3e635] shrink-0 overflow-hidden">
-              <img
-                src={upgradeThumbnail(currentTrack.thumbnail)}
-                alt={currentTrack.title}
+              <TrackArtwork
+                track={currentTrack}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -161,8 +195,18 @@ export const PlayerBar: React.FC = () => {
                 {currentTrack.artist}
               </div>
               <div className="font-mono text-[10px] text-[#a3e635] mt-1 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 bg-[#a3e635] rounded-full animate-ping" />
-                <span>STREAM LOCKED</span>
+                <span
+                  className={`w-1.5 h-1.5 bg-[#a3e635] rounded-full ${
+                    isPlaying ? 'animate-ping' : ''
+                  }`}
+                />
+                <span>
+                  {isLoadingStream
+                    ? 'BUFFERING SIGNAL...'
+                    : isPlaying
+                    ? 'STREAM LOCKED'
+                    : 'STREAM PAUSED'}
+                </span>
               </div>
             </div>
             <motion.button

@@ -14,7 +14,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { usePlayerStore, Track } from '../store/usePlayerStore';
-import { TrackCard, formatDuration, upgradeThumbnail } from './TrackCard';
+import { TrackCard, TrackArtwork, formatDuration } from './TrackCard';
 
 export const MainCanvas: React.FC = () => {
   const {
@@ -144,9 +144,8 @@ export const MainCanvas: React.FC = () => {
                   <div className="relative bg-[#12141c] border border-[#232736] hover:border-[#a3e635] p-5 md:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-[4px_4px_0px_#171a24] transition-colors">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
                       <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-[#0a0b0e] border border-[#232736] shrink-0 overflow-hidden">
-                        <img
-                          src={upgradeThumbnail(heroTrack.thumbnail)}
-                          alt={heroTrack.title}
+                        <TrackArtwork
+                          track={heroTrack}
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 bg-black/85 border border-[#232736] font-mono text-[10px] text-[#a3e635]">
@@ -379,9 +378,8 @@ export const MainCanvas: React.FC = () => {
                         <span className="font-mono text-xs text-zinc-500 w-6 text-right">
                           {String(idx + 1).padStart(2, '0')}
                         </span>
-                        <img
-                          src={upgradeThumbnail(track.thumbnail)}
-                          alt={track.title}
+                        <TrackArtwork
+                          track={track}
                           className="w-11 h-11 object-cover border border-[#232736]"
                         />
                         <div className="min-w-0">

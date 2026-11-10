@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trash2, Play, ListMusic } from 'lucide-react';
 import { usePlayerStore } from '../store/usePlayerStore';
-import { formatDuration, upgradeThumbnail } from './TrackCard';
+import { TrackArtwork, formatDuration } from './TrackCard';
 
 export const QueueDrawer: React.FC = () => {
   const {
@@ -60,9 +60,8 @@ export const QueueDrawer: React.FC = () => {
                   Now Transmitting
                 </div>
                 <div className="p-2.5 bg-[#161b26] border border-[#a3e635] shadow-[3px_3px_0px_#a3e635] flex items-center gap-3">
-                  <img
-                    src={upgradeThumbnail(currentTrack.thumbnail)}
-                    alt={currentTrack.title}
+                  <TrackArtwork
+                    track={currentTrack}
                     className="w-10 h-10 object-cover border border-[#232736]"
                   />
                   <div className="min-w-0 flex-1">
@@ -95,9 +94,8 @@ export const QueueDrawer: React.FC = () => {
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="relative w-9 h-9 shrink-0 bg-[#0a0b0e] border border-[#232736] overflow-hidden">
-                          <img
-                            src={upgradeThumbnail(track.thumbnail)}
-                            alt={track.title}
+                          <TrackArtwork
+                            track={track}
                             className="w-full h-full object-cover"
                           />
                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">

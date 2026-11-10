@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, Plus, Heart, Check } from 'lucide-react';
 import { Track, usePlayerStore } from '../store/usePlayerStore';
@@ -16,9 +16,41 @@ export const formatDuration = (seconds?: number): string => {
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 };
 
-export const upgradeThumbnail = (url?: string): string => {
-  if (!url) return 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=500&auto=format&fit=crop&q=80';
+export const upgradeThumbnail = (url?: string, videoId?: string): string => {
+  if (!url) {
+    return videoId
+      ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+      : 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=500&auto=format&fit=crop&q=80';
+  }
   return url.replace(/=w\d+-h\d+/, '=w544-h544');
+};
+
+export const TrackArtwork: React.FC<{
+  track: Track;
+  className?: string;
+}> = ({ track, className = 'w-full h-full object-cover' }) => {
+  const primarySrc = upgradeThumbnail(track.thumbnail, track.id);
+  const fallbackYtSrc = `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
+  const [imgSrc, setImgSrc] = useState<string>(primarySrc);
+
+  useEffect(() => {
+    setImgSrc(upgradeThumbnail(track.thumbnail, track.id));
+  }, [track.id, track.thumbnail]);
+
+  return (
+    <img
+      src={imgSrc}
+      alt={track.title}
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      onError={() => {
+        if (imgSrc !== fallbackYtSrc) {
+          setImgSrc(fallbackYtSrc);
+        }
+      }}
+      className={className}
+    />
+  );
 };
 
 export const TrackCard: React.FC<TrackCardProps> = ({ track, index, contextQueue }) => {
@@ -44,7 +76,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, index, contextQueue
       togglePlay();
     } else {
       const upcoming = contextQueue
-        ? contextQueue.slice(index + 1)
+        ? contextQueue.filter((_, idx) => idx !== index)
         : undefined;
       playTrack(track, upcoming);
     }
@@ -67,10 +99,8 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, index, contextQueue
     >
       {/* Album Artwork Container */}
       <div className="relative aspect-square w-full bg-[#0a0b0e] border border-[#232736] overflow-hidden mb-3">
-        <img
-          src={upgradeThumbnail(track.thumbnail)}
-          alt={track.title}
-          loading="lazy"
+        <TrackArtwork
+          track={track}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ease-out"
         />
 
