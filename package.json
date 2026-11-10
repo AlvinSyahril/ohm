@@ -1,0 +1,31 @@
+{
+  "name": "nuclear-redesign",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lean web-first redesign of Nuclear music streaming player",
+  "type": "module",
+  "scripts": {
+    "server:dev": "tsx watch src/server/index.ts",
+    "server:build": "tsc -p tsconfig.server.json",
+    "server:start": "node dist/server/index.js",
+    "test:resolver": "tsx src/server/test-resolver.ts"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "youtubei.js": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
