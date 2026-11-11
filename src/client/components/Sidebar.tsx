@@ -16,13 +16,13 @@ import {
 } from 'lucide-react';
 import { usePlayerStore, ActiveTab } from '../store/usePlayerStore';
 
-const MODERN_TRENDING_CHANNELS = [
-  { id: 'global-top', name: 'Global Top 50', query: 'Today\'s Top Hits official audio' },
-  { id: 'viral-radar', name: 'Viral Hits Radar', query: 'viral streaming hits 2025 2026 official' },
-  { id: 'pop-rb', name: 'Pop & Modern R&B', query: 'Billie Eilish Sabrina Carpenter SZA The Weeknd' },
-  { id: 'dance-club', name: 'Club & Dance Hits', query: 'Charli xcx Dua Lipa Fred again Peggy Gou' },
+const CURATED_STATIONS = [
+  { id: 'top-hits', name: "Today's Top Hits", query: "Today's Top Hits official audio" },
+  { id: 'viral-radar', name: 'Viral Hits', query: 'viral streaming hits 2025 2026 official' },
+  { id: 'pop-rb', name: 'Pop & R&B', query: 'Billie Eilish Sabrina Carpenter SZA The Weeknd' },
+  { id: 'dance-club', name: 'Dance & Club', query: 'Charli xcx Dua Lipa Fred again Peggy Gou' },
   { id: 'hiphop-heat', name: 'Hip-Hop Hotlist', query: 'Kendrick Lamar Drake Travis Scott Tommy Richman' },
-  { id: 'indie-vibes', name: 'Indie & Alt Pop', query: 'Chappell Roan Clairo Boygenius Dominic Fike' },
+  { id: 'indie-vibes', name: 'Indie & Alt', query: 'Chappell Roan Clairo Boygenius Dominic Fike' },
 ];
 
 export const Sidebar: React.FC = () => {
@@ -44,7 +44,7 @@ export const Sidebar: React.FC = () => {
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
   const [newPlaylistTitle, setNewPlaylistTitle] = useState('');
 
-  // Number keys 1-3 switch views when not focused in an input
+  // Number keys 1-3 switch views
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -95,7 +95,7 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="w-60 h-full bg-[#08090c] border-r border-white/[0.07] flex flex-col justify-between select-none shrink-0 z-20">
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Minimal Brand Header */}
+        {/* Brand Header */}
         <div className="h-14 px-5 border-b border-white/[0.07] flex items-center justify-between shrink-0">
           <motion.div
             whileHover={{ scale: 1.02 }}
@@ -107,13 +107,10 @@ export const Sidebar: React.FC = () => {
             className="flex items-center gap-2.5 cursor-pointer"
           >
             <div className="w-2.5 h-2.5 rounded-full bg-[#c8ff00] shadow-[0_0_10px_#c8ff00]" />
-            <span className="font-display font-bold text-[17px] tracking-[0.16em] text-white uppercase">
-              OHM
+            <span className="font-display font-bold text-lg tracking-wider text-white uppercase">
+              Ohm
             </span>
           </motion.div>
-          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-400 tracking-wider">
-            CORE v2
-          </span>
         </div>
 
         {/* Primary Navigation with 60fps sliding active pill */}
@@ -127,13 +124,12 @@ export const Sidebar: React.FC = () => {
                   setActivePlaylistId(null);
                   setActiveTab(item.id);
                 }}
-                className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[13px] transition-colors cursor-pointer z-10 ${
+                className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-colors cursor-pointer z-10 ${
                   isActive
                     ? 'text-[#090a0c] font-semibold'
                     : 'text-zinc-400 hover:text-white font-medium'
                 }`}
               >
-                {/* 60fps Sliding Pill Background */}
                 {isActive && (
                   <motion.div
                     layoutId="sidebarActivePill"
@@ -147,7 +143,7 @@ export const Sidebar: React.FC = () => {
                   <span>{item.label}</span>
                 </span>
                 <span
-                  className={`font-mono text-[10px] ${
+                  className={`font-mono text-xs ${
                     isActive ? 'text-[#090a0c]/70' : 'text-zinc-600'
                   }`}
                 >
@@ -199,7 +195,7 @@ export const Sidebar: React.FC = () => {
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
                 onClick={() => setIsCreatingPlaylist(true)}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-medium text-zinc-300 hover:text-white bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] transition-colors cursor-pointer"
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-zinc-300 hover:text-white bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] transition-colors cursor-pointer"
               >
                 <Plus className="w-4 h-4 text-[#c8ff00]" />
                 <span>New Playlist</span>
@@ -218,7 +214,7 @@ export const Sidebar: React.FC = () => {
                 setActivePlaylistId(null);
                 setActiveTab('library');
               }}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] text-zinc-300 hover:text-white hover:bg-white/[0.04] transition-colors cursor-pointer group"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm text-zinc-300 hover:text-white hover:bg-white/[0.04] transition-colors cursor-pointer group"
             >
               <span className="flex items-center gap-2.5 min-w-0">
                 <div className="w-5 h-5 rounded-lg flex items-center justify-center bg-gradient-to-br from-[#c8ff00]/25 to-[#c8ff00]/5 text-[#c8ff00] shrink-0">
@@ -226,7 +222,7 @@ export const Sidebar: React.FC = () => {
                 </div>
                 <span className="truncate font-medium">Liked Music</span>
               </span>
-              <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
+              <span className="font-mono text-xs text-zinc-500 tabular-nums">
                 {favorites.length}
               </span>
             </motion.button>
@@ -244,7 +240,7 @@ export const Sidebar: React.FC = () => {
                       setActivePlaylistId(pl.id);
                       setActiveTab('library');
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[12px] transition-colors cursor-pointer group ${
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer group ${
                       isPlActive
                         ? 'bg-white/[0.08] text-white font-medium border-l-2 border-[#c8ff00]'
                         : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
@@ -275,14 +271,14 @@ export const Sidebar: React.FC = () => {
             </div>
           </div>
 
-          {/* Curated Modern Trending Channels */}
+          {/* Curated Stations */}
           <div className="pt-3 border-t border-white/[0.06]">
-            <div className="px-3 pb-1.5 flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-              <span>Viral Radios</span>
+            <div className="px-3 pb-1.5 flex items-center justify-between text-xs font-semibold text-zinc-500">
+              <span>Stations</span>
               <Radio className="w-3 h-3 text-zinc-500" />
             </div>
             <div className="space-y-0.5">
-              {MODERN_TRENDING_CHANNELS.map((ch) => {
+              {CURATED_STATIONS.map((ch) => {
                 const isCurrentChannel = searchQuery === ch.query;
                 return (
                   <button
@@ -292,7 +288,7 @@ export const Sidebar: React.FC = () => {
                       setActiveTab('discover');
                       performSearch(ch.query);
                     }}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] flex items-center justify-between transition-colors cursor-pointer ${
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
                       isCurrentChannel
                         ? 'bg-white/[0.08] text-white font-medium'
                         : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
@@ -312,8 +308,8 @@ export const Sidebar: React.FC = () => {
 
       {/* Footer Utility Toggle */}
       <div className="p-3 border-t border-white/[0.07] flex items-center justify-between shrink-0">
-        <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider">
-          UI Click Synth
+        <span className="text-xs text-zinc-400 font-medium">
+          Audio Feedback
         </span>
         <button
           onClick={toggleSfx}
