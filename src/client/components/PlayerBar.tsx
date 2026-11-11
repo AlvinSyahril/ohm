@@ -48,18 +48,28 @@ export const PlayerBar: React.FC = () => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const isSwitchingTrackRef = useRef<boolean>(false);
-  const [hoverRatio, setHoverRatio] = useState<number | null>(null);
+  const waveformRef = useRef<HTMLDivElement | null>(null);
 
-  // Generate 72 crisp geometric bar heights for the track waveform
+  const [hoverRatio, setHoverRatio] = useState<number | null>(null);
+  const [hoverClientX, setHoverClientX] = useState<number>(0);
+
+  // 190 dense micro-bars for full-width organic soundwave along top edge
+  const TOTAL_BARS = 190;
   const waveformBars = useMemo(() => {
     const seed = currentTrack?.id || 'ohm-studio-wave';
-    const total = 72;
-    return Array.from({ length: total }, (_, i) => {
-      const norm = i / total;
-      const env = Math.sin(norm * Math.PI) * 0.65 + 0.35;
-      const code = seed.charCodeAt(i % seed.length) || 70;
-      const rand = ((code * (i + 17) * 31) % 100) / 100;
-      return Math.max(20, Math.min(100, Math.round((env * 0.6 + rand * 0.4) * 100)));
+    return Array.from({ length: TOTAL_BARS }, (_, i) => {
+      const norm = i / TOTAL_BARS;
+      // Multi-sine acoustic envelope that swells organically in center regions
+      const env =
+        Math.sin(norm * Math.PI) *
+        (0.6 + 0.3 * Math.sin(norm * Math.PI * 4 + 0.6) + 0.1 * Math.cos(norm * Math.PI * 10));
+      const code = seed.charCodeAt(i % seed.length) || 68;
+      const pseudoRand = ((code * (i + 19) * 31) % 100) / 100;
+      const heightPercent = Math.max(
+        15,
+        Math.min(100, Math.round((env * 0.72 + pseudoRand * 0.28) * 100))
+      );
+      return heightPercent;
     });
   }, [currentTrack?.id]);
 
@@ -118,7 +128,7 @@ export const PlayerBar: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [togglePlay]);
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleWaveformSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
     if (!audio || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -132,6 +142,13 @@ export const PlayerBar: React.FC = () => {
     }
   };
 
+  const handleWaveformMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setHoverRatio(ratio);
+    setHoverClientX(e.clientX);
+  };
+
   const progressPercent =
     duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const effectiveVolume = isMuted ? 0 : volume;
@@ -140,7 +157,7 @@ export const PlayerBar: React.FC = () => {
     : false;
 
   return (
-    <footer className="h-20 bg-[#090a0c] border-t border-white/[0.08] px-5 flex items-center justify-between gap-6 select-none z-30 shrink-0">
+    <footer className="relative h-[78px] bg-[#090a0c] border-t border-white/[0.08] px-6 flex items-center justify-between gap-6 select-none z-30 shrink-0">
       <audio
         ref={audioRef}
         preload="auto"
@@ -181,11 +198,54 @@ export const PlayerBar: React.FC = () => {
         }}
       />
 
+      {/* FULL-WIDTH TOP-EDGE SOUNDWAVE SCRUBBER */}
+      <div
+        ref={waveformRef}
+        onClick={handleWaveformSeek}
+        onMouseMove={handleWaveformMouseMove}
+        onMouseLeave={() => setHoverRatio(null)}
+        title="Click or scrub along the waveform to seek"
+        className="absolute -top-[14px] left-0 right-0 h-[28px] flex items-center justify-between gap-[2px] px-2 cursor-pointer z-40 group"
+      >
+        {/* Hover Target Timestamp Pill */}
+        {hoverRatio !== null && duration > 0 && (
+          <div
+            style={{
+              left: `${Math.max(30, Math.min(window.innerWidth - 30, hoverClientX))}px`,
+            }}
+            className="absolute -top-7 -translate-x-1/2 px-2 py-0.5 rounded bg-[#161922] border border-white/[0.18] font-mono text-[10px] text-white shadow-lg pointer-events-none tabular-nums z-50"
+          >
+            {formatDuration(hoverRatio * duration)}
+          </div>
+        )}
+
+        {/* 190 Dense Micro-bars */}
+        {waveformBars.map((heightPercent, idx) => {
+          const barPercent = (idx / TOTAL_BARS) * 100;
+          const isPlayed = barPercent <= progressPercent;
+          const isHovered = hoverRatio !== null && barPercent <= hoverRatio * 100;
+
+          return (
+            <div
+              key={idx}
+              style={{ height: `${Math.max(3, Math.round((heightPercent / 100) * 18))}px` }}
+              className={`flex-1 rounded-[1px] transition-all duration-75 ${
+                isPlayed
+                  ? 'bg-[#c8ff00]'
+                  : isHovered
+                  ? 'bg-zinc-300'
+                  : 'bg-white/[0.14] group-hover:bg-white/[0.22]'
+              }`}
+            />
+          );
+        })}
+      </div>
+
       {/* Left: Active Track Metadata */}
-      <div className="w-72 flex items-center gap-3 min-w-0">
+      <div className="w-72 flex items-center gap-3.5 min-w-0">
         {currentTrack ? (
           <>
-            <div className="w-12 h-12 rounded bg-[#111318] border border-white/[0.08] overflow-hidden shrink-0">
+            <div className="w-12 h-12 rounded-lg bg-[#111318] border border-white/[0.08] overflow-hidden shrink-0">
               <TrackArtwork
                 track={currentTrack}
                 className="w-full h-full object-cover"
@@ -202,9 +262,7 @@ export const PlayerBar: React.FC = () => {
             <button
               onClick={() => toggleFavorite(currentTrack)}
               className={`p-1.5 rounded transition-colors cursor-pointer shrink-0 ${
-                isFav
-                  ? 'text-[#c8ff00]'
-                  : 'text-zinc-500 hover:text-white'
+                isFav ? 'text-[#c8ff00]' : 'text-zinc-500 hover:text-white'
               }`}
               title="Save to Library"
             >
@@ -213,7 +271,7 @@ export const PlayerBar: React.FC = () => {
           </>
         ) : (
           <div className="flex items-center gap-3 text-zinc-500">
-            <div className="w-12 h-12 rounded bg-[#0f1115] border border-white/[0.06] flex items-center justify-center">
+            <div className="w-12 h-12 rounded-lg bg-[#0f1115] border border-white/[0.06] flex items-center justify-center">
               <Disc className="w-5 h-5 text-zinc-600" />
             </div>
             <div>
@@ -228,8 +286,14 @@ export const PlayerBar: React.FC = () => {
         )}
       </div>
 
-      {/* Center: Transport Controls + Flat Geometric Waveform Scrubber */}
-      <div className="flex-1 max-w-xl flex flex-col items-center gap-1.5">
+      {/* Center: Ergonomic Transport Controls with Flanking Timestamps */}
+      <div className="flex items-center gap-5">
+        {/* Elapsed Time */}
+        <span className="font-mono text-[12px] text-zinc-400 tabular-nums w-10 text-right">
+          {formatDuration(currentTime)}
+        </span>
+
+        {/* Transport Buttons */}
         <div className="flex items-center gap-4">
           <button
             onClick={toggleShuffle}
@@ -239,7 +303,7 @@ export const PlayerBar: React.FC = () => {
             }`}
             title="Shuffle"
           >
-            <Shuffle className="w-3.5 h-3.5" />
+            <Shuffle className="w-4 h-4" />
           </button>
 
           <button
@@ -255,15 +319,15 @@ export const PlayerBar: React.FC = () => {
             onClick={togglePlay}
             disabled={!currentTrack && queue.length === 0}
             aria-label="Play or pause"
-            className="w-9 h-9 rounded-md bg-white hover:bg-[#c8ff00] text-[#090a0c] flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40"
+            className="w-11 h-11 rounded-full bg-white hover:bg-[#c8ff00] text-[#090a0c] shadow-[0_4px_16px_rgba(255,255,255,0.18)] flex items-center justify-center transition-all duration-150 cursor-pointer disabled:opacity-40"
             title="Play / Pause (Space)"
           >
             {isLoadingStream ? (
-              <Loader2 className="w-4 h-4 animate-spin stroke-[2.5]" />
+              <Loader2 className="w-5 h-5 animate-spin stroke-[2.5]" />
             ) : isPlaying ? (
-              <Pause className="w-4 h-4 fill-current" />
+              <Pause className="w-5 h-5 fill-current" />
             ) : (
-              <Play className="w-4 h-4 fill-current ml-0.5" />
+              <Play className="w-5 h-5 fill-current ml-0.5" />
             )}
           </button>
 
@@ -280,71 +344,26 @@ export const PlayerBar: React.FC = () => {
             onClick={toggleRepeat}
             aria-label="Toggle repeat"
             className={`p-1 transition-colors cursor-pointer ${
-              repeatMode !== 'off'
-                ? 'text-[#c8ff00]'
-                : 'text-zinc-500 hover:text-white'
+              repeatMode !== 'off' ? 'text-[#c8ff00]' : 'text-zinc-500 hover:text-white'
             }`}
             title={`Repeat: ${repeatMode}`}
           >
             {repeatMode === 'one' ? (
-              <Repeat1 className="w-3.5 h-3.5" />
+              <Repeat1 className="w-4 h-4" />
             ) : (
-              <Repeat className="w-3.5 h-3.5" />
+              <Repeat className="w-4 h-4" />
             )}
           </button>
         </div>
 
-        {/* Precision Flat Waveform Scrubber with Time Readouts */}
-        <div className="w-full flex items-center gap-3">
-          <span className="font-mono text-[11px] text-zinc-400 tabular-nums w-9 text-right">
-            {hoverRatio !== null && duration > 0
-              ? formatDuration(hoverRatio * duration)
-              : formatDuration(currentTime)}
-          </span>
-
-          <div
-            onClick={handleSeek}
-            onMouseMove={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const r = Math.max(
-                0,
-                Math.min(1, (e.clientX - rect.left) / rect.width)
-              );
-              setHoverRatio(r);
-            }}
-            onMouseLeave={() => setHoverRatio(null)}
-            className="flex-1 h-5 flex items-center justify-between gap-[2px] cursor-pointer group"
-          >
-            {waveformBars.map((heightPct, idx) => {
-              const barPct = (idx / waveformBars.length) * 100;
-              const isPlayed = barPct <= progressPercent;
-              const isHovered =
-                hoverRatio !== null && barPct <= hoverRatio * 100;
-
-              return (
-                <div
-                  key={idx}
-                  style={{ height: `${currentTrack ? heightPct : 25}%` }}
-                  className={`flex-1 rounded-[1px] transition-colors duration-75 ${
-                    isPlayed
-                      ? 'bg-[#c8ff00]'
-                      : isHovered
-                      ? 'bg-zinc-400'
-                      : 'bg-white/[0.12] group-hover:bg-white/[0.18]'
-                  }`}
-                />
-              );
-            })}
-          </div>
-
-          <span className="font-mono text-[11px] text-zinc-500 tabular-nums w-9">
-            {formatDuration(duration)}
-          </span>
-        </div>
+        {/* Total Duration */}
+        <span className="font-mono text-[12px] text-zinc-500 tabular-nums w-10">
+          {formatDuration(duration)}
+        </span>
       </div>
 
       {/* Right: Volume & Queue Controls */}
-      <div className="w-72 flex items-center justify-end gap-3">
+      <div className="w-72 flex items-center justify-end gap-3.5">
         <button
           onClick={toggleMute}
           aria-label="Toggle mute"
@@ -358,7 +377,7 @@ export const PlayerBar: React.FC = () => {
         </button>
 
         <div className="relative w-24 h-4 flex items-center">
-          <div className="w-full h-1 bg-white/[0.12] rounded-sm overflow-hidden">
+          <div className="w-full h-1 bg-white/[0.12] rounded-full overflow-hidden">
             <div
               style={{ width: `${effectiveVolume * 100}%` }}
               className="h-full bg-white"
@@ -378,7 +397,7 @@ export const PlayerBar: React.FC = () => {
 
         <button
           onClick={() => setQueueOpen(!isQueueOpen)}
-          className={`px-2.5 py-1 rounded border font-mono text-[11px] flex items-center gap-1.5 cursor-pointer transition-colors ${
+          className={`px-3 py-1.5 rounded-md border font-mono text-[11px] flex items-center gap-1.5 cursor-pointer transition-colors ${
             isQueueOpen
               ? 'bg-white/[0.1] border-white/[0.2] text-white'
               : 'bg-transparent border-white/[0.08] text-zinc-400 hover:text-white'
