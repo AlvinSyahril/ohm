@@ -427,7 +427,7 @@ export const MainCanvas: React.FC = () => {
                 <motion.div
                   layoutId="activeMoodChip"
                   transition={{ type: 'spring', stiffness: 450, damping: 30 }}
-                  className="absolute inset-0 bg-[#c8ff00] rounded-full -z-10 shadow-[0_2px_10px_rgba(200,255,0,0.25)]"
+                  className="absolute inset-0 bg-[#c8ff00] rounded-full -z-10"
                 />
               )}
               <span>{chip.label}</span>
@@ -864,7 +864,7 @@ export const MainCanvas: React.FC = () => {
                               <motion.div
                                 layoutId="libraryActivePill"
                                 transition={{ type: 'spring', stiffness: 450, damping: 30 }}
-                                className="absolute inset-0 bg-[#c8ff00] rounded-xl -z-10 shadow-[0_2px_10px_rgba(200,255,0,0.2)]"
+                                className="absolute inset-0 bg-[#c8ff00] rounded-xl -z-10"
                               />
                             )}
                             <span>{label}</span>

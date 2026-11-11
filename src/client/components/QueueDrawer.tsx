@@ -73,7 +73,7 @@ export const QueueDrawer: React.FC = () => {
               <motion.div
                 layoutId="inspectorTabPill"
                 transition={{ type: 'spring', stiffness: 450, damping: 30 }}
-                className="absolute inset-0 bg-[#c8ff00] rounded-lg -z-10 shadow-[0_2px_8px_rgba(200,255,0,0.2)]"
+                className="absolute inset-0 bg-[#c8ff00] rounded-lg -z-10"
               />
             )}
             <ListMusic className="w-3.5 h-3.5" />
@@ -103,7 +103,7 @@ export const QueueDrawer: React.FC = () => {
               <motion.div
                 layoutId="inspectorTabPill"
                 transition={{ type: 'spring', stiffness: 450, damping: 30 }}
-                className="absolute inset-0 bg-[#c8ff00] rounded-lg -z-10 shadow-[0_2px_8px_rgba(200,255,0,0.2)]"
+                className="absolute inset-0 bg-[#c8ff00] rounded-lg -z-10"
               />
             )}
             <Info className="w-3.5 h-3.5" />

@@ -106,14 +106,14 @@ export const Sidebar: React.FC = () => {
             }}
             className="flex items-center gap-2.5 cursor-pointer"
           >
-            <div className="w-2.5 h-2.5 rounded-full bg-[#c8ff00] shadow-[0_0_10px_#c8ff00]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-[#c8ff00]" />
             <span className="font-display font-bold text-lg tracking-wider text-white uppercase">
               Ohm
             </span>
           </motion.div>
         </div>
 
-        {/* Primary Navigation with 60fps sliding active pill */}
+        {/* Primary Navigation with 60fps sliding active pill and visible code index badges */}
         <div className="p-3 space-y-1 shrink-0 relative">
           {navItems.map((item) => {
             const isActive = activeTab === item.id && activePlaylistId === null;
@@ -124,27 +124,29 @@ export const Sidebar: React.FC = () => {
                   setActivePlaylistId(null);
                   setActiveTab(item.id);
                 }}
-                className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-colors cursor-pointer z-10 ${
+                className={`relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm transition-colors cursor-pointer z-10 ${
                   isActive
                     ? 'text-[#090a0c] font-semibold'
-                    : 'text-zinc-400 hover:text-white font-medium'
+                    : 'text-zinc-300 hover:text-white font-medium hover:bg-white/[0.04]'
                 }`}
               >
                 {isActive && (
                   <motion.div
                     layoutId="sidebarActivePill"
                     transition={{ type: 'spring', stiffness: 450, damping: 32 }}
-                    className="absolute inset-0 bg-[#c8ff00] rounded-xl -z-10 shadow-[0_2px_12px_rgba(200,255,0,0.25)]"
+                    className="absolute inset-0 bg-[#c8ff00] rounded-xl -z-10"
                   />
                 )}
 
                 <span className="flex items-center gap-3">
                   {item.icon}
-                  <span>{item.label}</span>
+                  <span className="tracking-tight text-[13px]">{item.label}</span>
                 </span>
                 <span
-                  className={`font-mono text-xs ${
-                    isActive ? 'text-[#090a0c]/70' : 'text-zinc-600'
+                  className={`font-mono text-[10px] font-semibold px-2 py-0.5 rounded-md border transition-colors tabular-nums ${
+                    isActive
+                      ? 'bg-black/15 text-[#090a0c] border-black/20'
+                      : 'bg-white/[0.06] text-zinc-300 border-white/[0.1]'
                   }`}
                 >
                   {item.shortcut}

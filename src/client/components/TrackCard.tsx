@@ -163,7 +163,7 @@ export const CompactTrackRow: React.FC<CompactTrackRowProps> = ({
       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
       className={`group relative flex items-center justify-between p-2 rounded-xl transition-colors cursor-pointer select-none ${
         isCurrent
-          ? 'bg-[#181d26] border border-[#c8ff00]/50 shadow-[0_2px_12px_rgba(200,255,0,0.06)]'
+          ? 'bg-[#181d26] border border-[#c8ff00]/60'
           : 'bg-[#0e1116]/80 hover:bg-[#151922] border border-white/[0.05] hover:border-white/[0.12]'
       }`}
     >
@@ -480,7 +480,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
       transition={{ type: 'spring', stiffness: 400, damping: 25 }}
       className={`group relative rounded-2xl p-3 cursor-pointer select-none flex flex-col justify-between transition-colors duration-200 ${
         isCurrent
-          ? 'bg-[#151922] border border-[#c8ff00] shadow-[0_4px_20px_rgba(200,255,0,0.08)]'
+          ? 'bg-[#151922] border border-[#c8ff00]'
           : 'bg-[#0f1218]/80 border border-white/[0.06] hover:bg-[#141822] hover:border-white/[0.14]'
       }`}
     >

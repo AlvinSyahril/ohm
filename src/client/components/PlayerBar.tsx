@@ -384,7 +384,7 @@ export const PlayerBar: React.FC = () => {
               onClick={togglePlay}
               disabled={!currentTrack && queue.length === 0}
               aria-label="Play or pause"
-              className="w-11 h-11 rounded-full bg-white hover:bg-[#c8ff00] text-[#090a0c] shadow-[0_4px_16px_rgba(255,255,255,0.18)] flex items-center justify-center transition-all duration-150 cursor-pointer disabled:opacity-40 active:scale-95"
+              className="w-11 h-11 rounded-full bg-white hover:bg-[#c8ff00] text-[#090a0c] -translate-y-[2px] flex items-center justify-center transition-all duration-150 cursor-pointer disabled:opacity-40 active:scale-95 shrink-0"
               title="Play / Pause (Space)"
             >
               {isLoadingStream ? (
@@ -462,10 +462,10 @@ export const PlayerBar: React.FC = () => {
 
           <button
             onClick={() => setQueueOpen(!isQueueOpen)}
-            className={`px-3 py-1.5 rounded-md border font-mono text-[11px] flex items-center gap-1.5 cursor-pointer transition-colors ${
+            className={`px-3 py-1.5 rounded-md border font-mono text-[11px] flex items-center gap-1.5 cursor-pointer transition-all ${
               isQueueOpen
-                ? 'bg-white/[0.1] border-white/[0.2] text-white'
-                : 'bg-transparent border-white/[0.08] text-zinc-400 hover:text-white'
+                ? 'bg-[#c8ff00]/15 border-[#c8ff00]/60 text-[#c8ff00] shadow-[0_0_12px_rgba(200,255,0,0.35)] font-semibold'
+                : 'bg-transparent border-white/[0.08] text-zinc-400 hover:text-[#c8ff00] hover:border-[#c8ff00]/40 hover:shadow-[0_0_10px_rgba(200,255,0,0.2)]'
             }`}
             title="Toggle Queue & Inspector"
           >
