@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play,
   Pause,
@@ -6,8 +7,7 @@ import {
   Heart,
   Check,
   MoreVertical,
-  ListPlus,
-  Radio,
+  Music,
   Disc,
 } from 'lucide-react';
 import { Track, Playlist, usePlayerStore } from '../store/usePlayerStore';
@@ -22,34 +22,79 @@ export const formatDuration = (seconds?: number): string => {
 export const upgradeThumbnail = (url?: string, videoId?: string): string => {
   if (!url) {
     return videoId
-      ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
-      : 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=500&auto=format&fit=crop&q=80';
+      ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
+      : '';
   }
   return url.replace(/=w\d+-h\d+/, '=w544-h544');
 };
 
+/**
+ * Bulletproof Track Artwork with multi-tier fallback:
+ * 1. High-res original / upgraded URL
+ * 2. mqdefault.jpg
+ * 3. default.jpg
+ * 4. Generative acoustic geometric vector avatar (guarantees NO broken grey 3-dot boxes)
+ */
 export const TrackArtwork: React.FC<{
   track: Track;
   className?: string;
 }> = ({ track, className = 'w-full h-full object-cover' }) => {
-  const primarySrc = upgradeThumbnail(track.thumbnail, track.id);
-  const fallbackYtSrc = `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
-  const [imgSrc, setImgSrc] = useState<string>(primarySrc);
+  const [tier, setTier] = useState<number>(0);
 
   useEffect(() => {
-    setImgSrc(upgradeThumbnail(track.thumbnail, track.id));
+    setTier(0);
   }, [track.id, track.thumbnail]);
+
+  const candidateUrls = [
+    upgradeThumbnail(track.thumbnail, track.id),
+    track.id ? `https://i.ytimg.com/vi/${track.id}/mqdefault.jpg` : '',
+    track.id ? `https://i.ytimg.com/vi/${track.id}/default.jpg` : '',
+  ].filter(Boolean);
+
+  const currentSrc = candidateUrls[tier];
+
+  // If all URL candidates fail, render a stylish geometric acoustic artwork
+  if (!currentSrc || tier >= candidateUrls.length) {
+    const initials = (track.title || 'M')
+      .split(' ')
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase();
+
+    // Deterministic hue from track id
+    const seed = track.id || track.title || 'ohm';
+    const hue = (seed.charCodeAt(0) * 37 + (seed.charCodeAt(1) || 45) * 19) % 360;
+
+    return (
+      <div
+        className={`${className} flex flex-col items-center justify-center relative overflow-hidden select-none`}
+        style={{
+          background: `linear-gradient(135deg, hsl(${hue}, 45%, 12%), hsl(${(hue + 40) % 360}, 60%, 7%))`,
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+        }}
+      >
+        {/* Subtle geometric circles */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+          <div className="w-20 h-20 rounded-full border border-white" />
+          <div className="w-12 h-12 rounded-full border border-white absolute" />
+        </div>
+        <Disc className="w-5 h-5 text-white/40 mb-1" />
+        <span className="font-display font-bold text-xs text-white/80 tracking-wider">
+          {initials}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <img
-      src={imgSrc}
+      src={currentSrc}
       alt={track.title}
       referrerPolicy="no-referrer"
       loading="lazy"
       onError={() => {
-        if (imgSrc !== fallbackYtSrc) {
-          setImgSrc(fallbackYtSrc);
-        }
+        setTier((prev) => prev + 1);
       }}
       className={className}
     />
@@ -113,17 +158,20 @@ export const CompactTrackRow: React.FC<CompactTrackRowProps> = ({
   };
 
   return (
-    <div
+    <motion.div
       onClick={handleRowClick}
-      className={`group relative flex items-center justify-between p-1.5 rounded-lg transition-colors cursor-pointer select-none ${
+      whileHover={{ scale: 1.008 }}
+      whileTap={{ scale: 0.992 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+      className={`group relative flex items-center justify-between p-2 rounded-xl transition-colors cursor-pointer select-none ${
         isCurrent
-          ? 'bg-[#181c24] border border-[#c8ff00]/40'
-          : 'bg-[#0f1115]/60 hover:bg-[#151820] border border-white/[0.04] hover:border-white/[0.1]'
+          ? 'bg-[#181d26] border border-[#c8ff00]/50 shadow-[0_2px_12px_rgba(200,255,0,0.06)]'
+          : 'bg-[#0e1116]/80 hover:bg-[#151922] border border-white/[0.05] hover:border-white/[0.12]'
       }`}
     >
       {/* Left: Thumbnail & Equalizer / Play icon */}
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className="relative w-12 h-12 rounded-md bg-[#090a0c] overflow-hidden shrink-0 border border-white/[0.05]">
+        <div className="relative w-12 h-12 rounded-lg bg-[#090a0c] overflow-hidden shrink-0 border border-white/[0.06]">
           <TrackArtwork track={track} className="w-full h-full object-cover" />
 
           {/* Hover Play Button Overlay */}
@@ -213,46 +261,52 @@ export const CompactTrackRow: React.FC<CompactTrackRowProps> = ({
           {formatDuration(track.duration)}
         </span>
 
-        {/* Popover Menu */}
-        {menuOpen && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="absolute right-0 top-8 w-48 bg-[#11141a] border border-white/[0.12] rounded-lg shadow-2xl p-1.5 z-30 select-none animate-in fade-in duration-100"
-          >
-            <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-white/[0.06] mb-1">
-              Add to Playlist
-            </div>
-            {playlists.length === 0 ? (
-              <div className="px-2 py-1.5 text-xs text-zinc-400">
-                No playlists yet
+        {/* Popover Menu with AnimatePresence */}
+        <AnimatePresence>
+          {menuOpen && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -4 }}
+              transition={{ duration: 0.12 }}
+              onClick={(e) => e.stopPropagation()}
+              className="absolute right-0 top-8 w-48 bg-[#12151d] border border-white/[0.12] rounded-xl shadow-2xl p-1.5 z-30 select-none backdrop-blur-md"
+            >
+              <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-white/[0.06] mb-1">
+                Add to Playlist
               </div>
-            ) : (
-              playlists.map((pl) => {
-                const alreadyIn = pl.tracks.some((t) => t.id === track.id);
-                return (
-                  <button
-                    key={pl.id}
-                    onClick={() => {
-                      addTrackToPlaylist(pl.id, track);
-                      setMenuOpen(false);
-                    }}
-                    disabled={alreadyIn}
-                    className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center justify-between transition-colors ${
-                      alreadyIn
-                        ? 'text-zinc-600 cursor-default'
-                        : 'text-zinc-300 hover:text-white hover:bg-white/[0.06] cursor-pointer'
-                    }`}
-                  >
-                    <span className="truncate">{pl.name}</span>
-                    {alreadyIn && <Check className="w-3 h-3 text-[#c8ff00]" />}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        )}
+              {playlists.length === 0 ? (
+                <div className="px-2 py-1.5 text-xs text-zinc-400">
+                  No playlists yet
+                </div>
+              ) : (
+                playlists.map((pl) => {
+                  const alreadyIn = pl.tracks.some((t) => t.id === track.id);
+                  return (
+                    <button
+                      key={pl.id}
+                      onClick={() => {
+                        addTrackToPlaylist(pl.id, track);
+                        setMenuOpen(false);
+                      }}
+                      disabled={alreadyIn}
+                      className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                        alreadyIn
+                          ? 'text-zinc-600 cursor-default'
+                          : 'text-zinc-300 hover:text-white hover:bg-white/[0.06] cursor-pointer'
+                      }`}
+                    >
+                      <span className="truncate">{pl.name}</span>
+                      {alreadyIn && <Check className="w-3 h-3 text-[#c8ff00]" />}
+                    </button>
+                  );
+                })
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
@@ -268,41 +322,47 @@ export const CarouselTrackCard: React.FC<CarouselTrackCardProps> = ({
   subtitle,
   onPlay,
 }) => {
-  const { currentTrack, isPlaying, toggleFavorite, favorites, addToQueue } =
-    usePlayerStore();
+  const { currentTrack, isPlaying, toggleFavorite, favorites } = usePlayerStore();
 
   const isCurrent = currentTrack?.id === track.id;
   const isCurrentlyPlaying = isCurrent && isPlaying;
   const isFav = favorites.some((t) => t.id === track.id);
 
   return (
-    <div
+    <motion.div
       onClick={onPlay}
-      className="group w-44 shrink-0 p-2.5 rounded-xl bg-[#0f1115]/50 hover:bg-[#14171e] border border-white/[0.05] hover:border-white/[0.12] transition-colors cursor-pointer select-none flex flex-col"
+      whileHover={{ y: -5, scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      className="group w-44 shrink-0 p-3 rounded-2xl bg-[#0f1218]/70 hover:bg-[#141822] border border-white/[0.05] hover:border-white/[0.14] transition-colors cursor-pointer select-none flex flex-col shadow-lg"
     >
       {/* Square Art */}
-      <div className="relative aspect-square w-full rounded-lg bg-[#090a0c] overflow-hidden mb-2.5 border border-white/[0.04]">
+      <div className="relative aspect-square w-full rounded-xl bg-[#090a0c] overflow-hidden mb-3 border border-white/[0.05]">
         <TrackArtwork
           track={track}
-          className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-200"
+          className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-300"
         />
 
-        {/* Hover / Active Play Button */}
+        {/* Hover / Active Play Button with Spring */}
         <div
-          className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${
+          className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200 ${
             isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
         >
-          <div className="w-10 h-10 rounded-full bg-[#c8ff00] text-[#090a0c] flex items-center justify-center shadow-lg transition-transform group-hover:scale-105">
+          <motion.div
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.92 }}
+            className="w-11 h-11 rounded-full bg-[#c8ff00] text-[#090a0c] flex items-center justify-center shadow-xl"
+          >
             {isCurrentlyPlaying ? (
               <Pause className="w-5 h-5 fill-current" />
             ) : (
               <Play className="w-5 h-5 fill-current ml-0.5" />
             )}
-          </div>
+          </motion.div>
         </div>
 
-        {/* Quick Save Pill */}
+        {/* Quick Save Heart */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -321,7 +381,7 @@ export const CarouselTrackCard: React.FC<CarouselTrackCardProps> = ({
       {/* Info */}
       <div className="min-w-0">
         <h4
-          className={`font-display font-medium text-[13px] truncate ${
+          className={`font-display font-semibold text-[13px] truncate ${
             isCurrent ? 'text-[#c8ff00]' : 'text-zinc-100 group-hover:text-white'
           }`}
           title={track.title}
@@ -332,7 +392,7 @@ export const CarouselTrackCard: React.FC<CarouselTrackCardProps> = ({
           {subtitle || track.artist}
         </p>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
@@ -377,24 +437,27 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   };
 
   return (
-    <div
+    <motion.div
       onClick={handlePlayClick}
-      className={`group relative rounded-xl p-3 cursor-pointer select-none flex flex-col justify-between transition-colors duration-150 ${
+      whileHover={{ y: -4, scale: 1.015 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      className={`group relative rounded-2xl p-3 cursor-pointer select-none flex flex-col justify-between transition-colors duration-200 ${
         isCurrent
-          ? 'bg-[#15181f] border border-[#c8ff00]'
-          : 'bg-[#0f1115] border border-white/[0.06] hover:bg-[#14171d] hover:border-white/[0.14]'
+          ? 'bg-[#151922] border border-[#c8ff00] shadow-[0_4px_20px_rgba(200,255,0,0.08)]'
+          : 'bg-[#0f1218]/80 border border-white/[0.06] hover:bg-[#141822] hover:border-white/[0.14]'
       }`}
     >
       {/* Square Album Artwork */}
-      <div className="relative aspect-square w-full rounded-lg bg-[#090a0c] overflow-hidden mb-3 border border-white/[0.04]">
+      <div className="relative aspect-square w-full rounded-xl bg-[#090a0c] overflow-hidden mb-3 border border-white/[0.05]">
         <TrackArtwork
           track={track}
-          className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-200 ease-out"
+          className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300 ease-out"
         />
 
         {/* Active Playing Indicator Badge */}
         {isCurrent && (
-          <div className="absolute top-2 left-2 px-1.5 py-1 rounded bg-[#090a0c]/90 border border-white/[0.12] flex items-center gap-1.5">
+          <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-[#090a0c]/90 border border-white/[0.12] flex items-center gap-1.5 shadow-md">
             <div className="flex items-end gap-[2px] h-2.5 w-3">
               <span
                 className={`w-[2px] bg-[#c8ff00] ${
@@ -423,7 +486,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           <button
             onClick={() => toggleFavorite(track)}
             title={isFav ? 'Remove from Library' : 'Save to Library'}
-            className={`w-7 h-7 rounded flex items-center justify-center border transition-colors cursor-pointer ${
+            className={`w-7 h-7 rounded-full flex items-center justify-center border transition-colors cursor-pointer ${
               isFav
                 ? 'bg-[#c8ff00] border-[#c8ff00] text-[#090a0c]'
                 : 'bg-[#090a0c]/85 border-white/[0.15] text-white hover:border-white/40'
@@ -435,21 +498,23 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           <button
             onClick={() => addToQueue(track)}
             title={inQueue ? 'In Queue' : 'Add to Queue'}
-            className={`w-7 h-7 rounded flex items-center justify-center border transition-colors cursor-pointer ${
+            className={`w-7 h-7 rounded-full flex items-center justify-center border transition-colors cursor-pointer ${
               inQueue
                 ? 'bg-white border-white text-[#090a0c]'
                 : 'bg-[#090a0c]/85 border-white/[0.15] text-white hover:border-white/40'
             }`}
           >
-            {inQueue ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+            {inQueue ? <Check className="w-3.5 h-3.5 text-[#090a0c]" /> : <Plus className="w-3.5 h-3.5" />}
           </button>
         </div>
 
         {/* Bottom-Right Play Button on Hover */}
-        <button
+        <motion.button
           onClick={handlePlayClick}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.92 }}
           aria-label={isCurrentlyPlaying ? 'Pause' : 'Play'}
-          className={`absolute bottom-2 right-2 w-9 h-9 rounded-full bg-[#c8ff00] text-[#090a0c] flex items-center justify-center shadow-lg transition-all duration-150 cursor-pointer ${
+          className={`absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[#c8ff00] text-[#090a0c] flex items-center justify-center shadow-xl transition-all duration-200 cursor-pointer ${
             isCurrent
               ? 'opacity-100 translate-y-0'
               : 'opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0'
@@ -460,7 +525,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           ) : (
             <Play className="w-4 h-4 fill-current ml-0.5" />
           )}
-        </button>
+        </motion.button>
       </div>
 
       {/* Clean Typography */}
@@ -486,6 +551,6 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           </span>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
