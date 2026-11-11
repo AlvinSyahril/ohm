@@ -325,7 +325,7 @@ export const MainCanvas: React.FC = () => {
       )}
 
       {/* Main Scrollable Viewport */}
-      <div className="flex-1 overflow-y-auto p-6 pb-28 space-y-8">
+      <div className="flex-1 overflow-y-auto p-6 pb-36 space-y-8">
         {(activeTab === 'discover' || activeTab === 'search') && (
           <>
             {isSearching ? (
