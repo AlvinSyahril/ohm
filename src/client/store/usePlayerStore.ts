@@ -38,6 +38,7 @@ interface PlayerState {
   isMuted: boolean;
   repeatMode: RepeatMode;
   shuffle: boolean;
+  autoplay: boolean;
 
   activeTab: ActiveTab;
   isQueueOpen: boolean;
@@ -48,6 +49,9 @@ interface PlayerState {
   searchResults: Track[];
   isSearching: boolean;
   activeMood: string | null;
+
+  tasteTracks: Track[];
+  isLoadingTaste: boolean;
 
   // Actions
   setActiveTab: (tab: ActiveTab) => void;
@@ -60,6 +64,7 @@ interface PlayerState {
   performSearch: (q: string) => Promise<void>;
 
   playTrack: (track: Track, newQueue?: Track[]) => void;
+  startRadio: (track: Track) => Promise<void>;
   togglePlay: () => void;
   setIsPlaying: (playing: boolean) => void;
   setIsLoadingStream: (loading: boolean) => void;
@@ -71,6 +76,7 @@ interface PlayerState {
   toggleMute: () => void;
   toggleRepeat: () => void;
   toggleShuffle: () => void;
+  toggleAutoplay: () => void;
 
   addToQueue: (track: Track) => void;
   removeFromQueue: (id: string) => void;
@@ -84,6 +90,8 @@ interface PlayerState {
   deletePlaylist: (id: string) => void;
   addTrackToPlaylist: (playlistId: string, track: Track) => void;
   removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
+
+  fetchTasteRecommendations: () => Promise<void>;
 }
 
 const loadFavorites = (): Track[] => {
@@ -150,6 +158,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isMuted: false,
   repeatMode: 'off',
   shuffle: false,
+  autoplay: true,
 
   activeTab: 'discover',
   isQueueOpen: true,
@@ -160,6 +169,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   searchResults: [],
   isSearching: false,
   activeMood: 'All',
+
+  tasteTracks: [],
+  isLoadingTaste: false,
 
   setActiveTab: (tab) => {
     sfx.playTap();
@@ -217,6 +229,44 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       history: updatedHistory,
       queue: newQueue !== undefined ? newQueue : queue,
     });
+
+    // Dynamically trigger taste adaptation in background
+    get().fetchTasteRecommendations();
+  },
+
+  startRadio: async (track) => {
+    sfx.playEngage();
+    const { currentTrack, history } = get();
+    const updatedHistory = currentTrack
+      ? [currentTrack, ...history.filter((t) => t.id !== currentTrack.id)].slice(0, 30)
+      : history;
+
+    set({
+      currentTrack: track,
+      isPlaying: true,
+      isLoadingStream: true,
+      currentTime: 0,
+      duration: track.duration || 0,
+      history: updatedHistory,
+      isQueueOpen: true,
+      inspectorTab: 'queue',
+    });
+
+    try {
+      const res = await fetch(`/api/radio/${encodeURIComponent(track.id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const algorithmicTracks: Track[] = (data.tracks || []).filter(
+          (t: Track) => t.id !== track.id
+        );
+        set({
+          queue: algorithmicTracks,
+          tasteTracks: algorithmicTracks.slice(0, 16),
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to start radio:', err);
+    }
   },
 
   togglePlay: () => {
@@ -235,7 +285,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setIsLoadingStream: (loading) => set({ isLoadingStream: loading }),
 
   nextTrack: () => {
-    const { queue, currentTrack, repeatMode, shuffle, history } = get();
+    const { queue, currentTrack, repeatMode, shuffle, history, autoplay } = get();
     sfx.playTap();
 
     if (repeatMode === 'one' && currentTrack) {
@@ -255,6 +305,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           isPlaying: true,
           isLoadingStream: true,
         });
+      } else if (autoplay && currentTrack) {
+        // Smart Autoplay: fetch next radio tracks from YouTube Music!
+        fetch(`/api/radio/${encodeURIComponent(currentTrack.id)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            const nextList: Track[] = (data.tracks || []).filter(
+              (t: Track) => t.id !== currentTrack.id
+            );
+            if (nextList.length > 0) {
+              get().playTrack(nextList[0], nextList.slice(1));
+            } else {
+              set({ isPlaying: false });
+            }
+          })
+          .catch(() => set({ isPlaying: false }));
       } else {
         set({ isPlaying: false });
       }
@@ -281,6 +346,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       isPlaying: true,
       isLoadingStream: true,
     });
+
+    get().fetchTasteRecommendations();
   },
 
   prevTrack: () => {
@@ -335,6 +402,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set((state) => ({ shuffle: !state.shuffle }));
   },
 
+  toggleAutoplay: () => {
+    sfx.playTap();
+    set((state) => ({ autoplay: !state.autoplay }));
+  },
+
   addToQueue: (track) => {
     sfx.playTap();
     set((state) => {
@@ -371,6 +443,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       : [track, ...favorites];
     saveFavorites(updated);
     set({ favorites: updated });
+
+    // Dynamically update recommendations based on favorite shift
+    get().fetchTasteRecommendations();
   },
 
   isFavorite: (id) => get().favorites.some((t) => t.id === id),
@@ -408,6 +483,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
     savePlaylists(updated);
     set({ playlists: updated });
+
+    get().fetchTasteRecommendations();
   },
 
   removeTrackFromPlaylist: (playlistId, trackId) => {
@@ -418,5 +495,25 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
     savePlaylists(updated);
     set({ playlists: updated });
+  },
+
+  fetchTasteRecommendations: async () => {
+    const { favorites, history, playlists, currentTrack } = get();
+    const seedTrack = currentTrack || favorites[0] || history[0];
+    if (!seedTrack) return;
+
+    set({ isLoadingTaste: true });
+    try {
+      const res = await fetch(`/api/radio/${encodeURIComponent(seedTrack.id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const tracks: Track[] = (data.tracks || []).slice(0, 16);
+        set({ tasteTracks: tracks, isLoadingTaste: false });
+      } else {
+        set({ isLoadingTaste: false });
+      }
+    } catch {
+      set({ isLoadingTaste: false });
+    }
   },
 }));

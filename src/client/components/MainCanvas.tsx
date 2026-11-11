@@ -16,6 +16,7 @@ import {
   History,
   ArrowLeft,
   TrendingUp,
+  Radio,
 } from 'lucide-react';
 import { usePlayerStore, Track } from '../store/usePlayerStore';
 import {
@@ -121,6 +122,7 @@ export const MainCanvas: React.FC = () => {
     isSearching,
     performSearch,
     playTrack,
+    startRadio,
     history,
     favorites,
     playlists,
@@ -133,12 +135,19 @@ export const MainCanvas: React.FC = () => {
     isQueueOpen,
     setQueueOpen,
     queue,
+    tasteTracks,
+    isLoadingTaste,
   } = usePlayerStore();
 
   const [localSearchInput, setLocalSearchInput] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(-1);
+
   const [librarySubTab, setLibrarySubTab] = useState<LibrarySubTab>('playlists');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsBoxRef = useRef<HTMLDivElement>(null);
   const listenAgainScrollRef = useRef<HTMLDivElement>(null);
   const quickPicksScrollRef = useRef<HTMLDivElement>(null);
   const forYouScrollRef = useRef<HTMLDivElement>(null);
@@ -149,31 +158,88 @@ export const MainCanvas: React.FC = () => {
     [history, favorites, playlists]
   );
 
-  // Initial load: Fetch real trending songs if empty
+  // Initial load
   useEffect(() => {
     if (searchResults.length === 0 && !isSearching) {
       performSearch("Today's Top Hits official audio");
     }
   }, []);
 
-  // Keyboard shortcut '/' or 'Ctrl+K'
+  // Live Typeahead Search Suggestions Debounce
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    if (!localSearchInput.trim() || localSearchInput.trim().length < 2) {
+      setSuggestions([]);
+      setIsSuggestionsOpen(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/search/suggestions?q=${encodeURIComponent(localSearchInput.trim())}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setSuggestions(data.suggestions || []);
+          setIsSuggestionsOpen((data.suggestions || []).length > 0);
+          setActiveSuggestionIdx(-1);
+        }
+      } catch {
+        // Ignore suggestion failure
+      }
+    }, 160);
+
+    return () => clearTimeout(timer);
+  }, [localSearchInput]);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
       if (
-        (e.key === '/' && document.activeElement !== searchInputRef.current) ||
-        ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')
+        suggestionsBoxRef.current &&
+        !suggestionsBoxRef.current.contains(e.target as Node) &&
+        !searchInputRef.current?.contains(e.target as Node)
       ) {
-        e.preventDefault();
-        searchInputRef.current?.focus();
+        setIsSuggestionsOpen(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  // Keyboard navigation for search suggestions
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isSuggestionsOpen || suggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestionIdx((prev) =>
+        prev < suggestions.length - 1 ? prev + 1 : 0
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestionIdx((prev) =>
+        prev > 0 ? prev - 1 : suggestions.length - 1
+      );
+    } else if (e.key === 'Enter') {
+      if (activeSuggestionIdx >= 0 && activeSuggestionIdx < suggestions.length) {
+        e.preventDefault();
+        const selected = suggestions[activeSuggestionIdx];
+        setLocalSearchInput(selected);
+        setIsSuggestionsOpen(false);
+        setActivePlaylistId(null);
+        if (activeTab !== 'discover') setActiveTab('discover');
+        performSearch(selected);
+      }
+    } else if (e.key === 'Escape') {
+      setIsSuggestionsOpen(false);
+    }
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (localSearchInput.trim()) {
+      setIsSuggestionsOpen(false);
       setActivePlaylistId(null);
       if (activeTab !== 'discover') {
         setActiveTab('discover');
@@ -182,9 +248,18 @@ export const MainCanvas: React.FC = () => {
     }
   };
 
+  const handleSelectSuggestion = (s: string) => {
+    setLocalSearchInput(s);
+    setIsSuggestionsOpen(false);
+    setActivePlaylistId(null);
+    if (activeTab !== 'discover') setActiveTab('discover');
+    performSearch(s);
+  };
+
   const handleMoodSelect = (chip: (typeof MOOD_CHIPS)[number]) => {
     setActiveMood(chip.label);
     setLocalSearchInput('');
+    setIsSuggestionsOpen(false);
     setActivePlaylistId(null);
     if (activeTab !== 'discover') {
       setActiveTab('discover');
@@ -211,10 +286,13 @@ export const MainCanvas: React.FC = () => {
     return combined.slice(0, 14);
   }, [history]);
 
-  // Quick Picks tracks: search results or verified trending hits
+  // Quick Picks dynamically adapts to tasteTracks if available, otherwise searchResults
   const quickPickTracks = useMemo(() => {
+    if (tasteTracks.length >= 8) {
+      return tasteTracks.slice(0, 16);
+    }
     return searchResults.length > 0 ? searchResults.slice(0, 16) : GLOBAL_TRENDING_TRACKS;
-  }, [searchResults]);
+  }, [tasteTracks, searchResults]);
 
   const quickPickColumns: Track[][] = useMemo(() => {
     const cols: Track[][] = [];
@@ -229,8 +307,8 @@ export const MainCanvas: React.FC = () => {
 
   return (
     <main className="flex-1 flex flex-col min-w-0 h-full bg-[#08090c] select-none overflow-hidden relative">
-      {/* 1. Global Top Navigation & Search Bar */}
-      <header className="h-14 px-6 border-b border-white/[0.07] flex items-center justify-between gap-4 shrink-0 bg-[#08090c]/85 backdrop-blur-md z-10">
+      {/* 1. Global Top Navigation & Smart Search Bar */}
+      <header className="h-14 px-6 border-b border-white/[0.07] flex items-center justify-between gap-4 shrink-0 bg-[#08090c]/85 backdrop-blur-md z-30 relative">
         <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-xl">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
           <input
@@ -238,7 +316,11 @@ export const MainCanvas: React.FC = () => {
             type="text"
             value={localSearchInput}
             onChange={(e) => setLocalSearchInput(e.target.value)}
-            placeholder="Search songs, artists, albums, or vibes..."
+            onKeyDown={handleSearchKeyDown}
+            onFocus={() => {
+              if (suggestions.length > 0) setIsSuggestionsOpen(true);
+            }}
+            placeholder="Smart Search: songs, artists, moods, or natural vibes..."
             className="w-full bg-[#12151d] hover:bg-[#161a24] focus:bg-[#161a24] text-sm text-zinc-100 placeholder:text-zinc-500 pl-10 pr-20 py-2 rounded-full border border-white/[0.08] focus:border-[#c8ff00]/60 focus:outline-none transition-all shadow-inner"
           />
           {localSearchInput ? (
@@ -246,6 +328,8 @@ export const MainCanvas: React.FC = () => {
               type="button"
               onClick={() => {
                 setLocalSearchInput('');
+                setSuggestions([]);
+                setIsSuggestionsOpen(false);
                 searchInputRef.current?.focus();
               }}
               className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-white cursor-pointer"
@@ -257,13 +341,47 @@ export const MainCanvas: React.FC = () => {
               <span>/</span>
             </div>
           )}
+
+          {/* Floating Smart Search Suggestions Dropdown */}
+          <AnimatePresence>
+            {isSuggestionsOpen && suggestions.length > 0 && (
+              <motion.div
+                ref={suggestionsBoxRef}
+                initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.15 }}
+                className="absolute left-0 right-0 top-11 bg-[#12151e] border border-white/[0.12] rounded-2xl shadow-2xl p-1.5 z-50 backdrop-blur-xl overflow-hidden"
+              >
+                <div className="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-white/[0.05] mb-1 flex items-center justify-between">
+                  <span>Smart Predictions</span>
+                  <span className="text-[#c8ff00]">LIVE YTM ENGINE</span>
+                </div>
+                {suggestions.map((s, idx) => (
+                  <button
+                    key={`${s}-${idx}`}
+                    type="button"
+                    onClick={() => handleSelectSuggestion(s)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center gap-2.5 transition-colors cursor-pointer ${
+                      activeSuggestionIdx === idx
+                        ? 'bg-[#c8ff00] text-[#090a0c] font-semibold'
+                        : 'text-zinc-200 hover:text-white hover:bg-white/[0.06]'
+                    }`}
+                  >
+                    <Search className={`w-3.5 h-3.5 ${activeSuggestionIdx === idx ? 'text-[#090a0c]' : 'text-zinc-500'}`} />
+                    <span className="truncate">{s}</span>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </form>
 
         <div className="flex items-center gap-3 shrink-0">
-          {isSearching && (
+          {(isSearching || isLoadingTaste) && (
             <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c8ff00]" />
-              <span className="hidden sm:inline">LIVE REFRESH</span>
+              <span className="hidden sm:inline">SMART ENGINE TUNING</span>
             </div>
           )}
 
@@ -293,7 +411,7 @@ export const MainCanvas: React.FC = () => {
       </header>
 
       {/* 2. Horizontal Mood & Activity Chips Bar with 60fps sliding pill */}
-      <div className="px-6 py-2.5 border-b border-white/[0.06] flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0 bg-[#08090c]/50 relative">
+      <div className="px-6 py-2.5 border-b border-white/[0.06] flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0 bg-[#08090c]/50 relative z-10">
         {MOOD_CHIPS.map((chip) => {
           const isActive = activeMood === chip.label;
           return (
@@ -306,7 +424,6 @@ export const MainCanvas: React.FC = () => {
                   : 'text-zinc-300 hover:text-white bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06]'
               }`}
             >
-              {/* 60fps Sliding Pill Background */}
               {isActive && (
                 <motion.div
                   layoutId="activeMoodChip"
@@ -382,15 +499,15 @@ export const MainCanvas: React.FC = () => {
                 </div>
               </section>
 
-              {/* Section 2: Quick Picks (Pilihan Cepat) - 4-Column Matrix */}
+              {/* Section 2: Quick Picks (Pilihan Cepat) - Adapts to Taste */}
               <section className="space-y-3.5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 block">
-                      START RADIO FROM A TRACK
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-[#c8ff00] block font-semibold">
+                      {tasteTracks.length > 0 ? 'ADAPTED TO YOUR LISTENING HABITS' : 'START RADIO FROM A TRACK'}
                     </span>
                     <h2 className="font-display font-bold text-lg text-white">
-                      Quick Picks
+                      Quick Picks {tasteTracks.length > 0 && <span className="text-xs font-mono font-normal text-zinc-400">· Dynamic Radar</span>}
                     </h2>
                   </div>
 
@@ -445,7 +562,7 @@ export const MainCanvas: React.FC = () => {
                 </div>
               </section>
 
-              {/* Section 3: Dynamic Adaptive Taste Ecosystem Section */}
+              {/* Section 3: Dynamic Adaptive Recommendation Section */}
               <section className="space-y-3.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -480,12 +597,12 @@ export const MainCanvas: React.FC = () => {
                   ref={forYouScrollRef}
                   className="flex items-center gap-3.5 overflow-x-auto no-scrollbar pb-2 pt-1 scroll-smooth"
                 >
-                  {searchResults.slice(0, 12).map((track, idx) => (
+                  {(tasteTracks.length > 0 ? tasteTracks : searchResults).slice(0, 14).map((track, idx) => (
                     <CarouselTrackCard
                       key={`for-you-${track.id}-${idx}`}
                       track={track}
                       subtitle={track.artist}
-                      onPlay={() => playTrack(track, searchResults.slice(idx + 1))}
+                      onPlay={() => playTrack(track, (tasteTracks.length > 0 ? tasteTracks : searchResults).slice(idx + 1))}
                     />
                   ))}
                 </div>
@@ -503,7 +620,6 @@ export const MainCanvas: React.FC = () => {
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               className="space-y-9 pb-10"
             >
-              {/* Contemporary Genre & Mood Categories Grid */}
               <section className="space-y-4">
                 <div>
                   <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 block">
@@ -544,7 +660,6 @@ export const MainCanvas: React.FC = () => {
                 </div>
               </section>
 
-              {/* Trending Releases */}
               <section className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Flame className="w-4 h-4 text-[#c8ff00]" />
@@ -577,7 +692,6 @@ export const MainCanvas: React.FC = () => {
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               className="space-y-6 pb-10"
             >
-              {/* Case C1: Active Playlist Detail View */}
               {activePlaylist ? (
                 <div className="space-y-6">
                   <button
@@ -635,7 +749,6 @@ export const MainCanvas: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Track List */}
                   {activePlaylist.tracks.length === 0 ? (
                     <div className="p-12 text-center text-xs text-zinc-500 border border-dashed border-white/[0.08] rounded-2xl space-y-2">
                       <Music className="w-8 h-8 mx-auto text-zinc-600" />
@@ -692,7 +805,6 @@ export const MainCanvas: React.FC = () => {
                   )}
                 </div>
               ) : (
-                /* Case C2: Library Root Tabs */
                 <div className="space-y-6">
                   <div className="flex items-center justify-between border-b border-white/[0.07] pb-3 relative">
                     <div className="flex items-center gap-2">
@@ -728,7 +840,6 @@ export const MainCanvas: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* SubTab 1: Playlists Grid */}
                   {librarySubTab === 'playlists' && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                       <motion.div
@@ -786,7 +897,6 @@ export const MainCanvas: React.FC = () => {
                     </div>
                   )}
 
-                  {/* SubTab 2: Liked Music List */}
                   {librarySubTab === 'liked' && (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
@@ -826,7 +936,6 @@ export const MainCanvas: React.FC = () => {
                     </div>
                   )}
 
-                  {/* SubTab 3: Listening History */}
                   {librarySubTab === 'history' && (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">

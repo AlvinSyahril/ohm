@@ -23,7 +23,6 @@ const streamUrlCache = new Map<string, CachedStream>();
 
 export async function getInnertube(): Promise<Innertube> {
   if (!ytInstance) {
-    // Do NOT pass generate_session_locally: true so YouTube issues a genuine visitor session required by VISIONOS
     ytInstance = await Innertube.create({
       cache: new UniversalCache(true, './.cache'),
     });
@@ -61,7 +60,7 @@ export async function searchTracks(query: string): Promise<TrackMetadata[]> {
           duration: item.duration?.seconds,
           thumbnail:
             item.thumbnails?.[0]?.url ||
-            `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
+            `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`,
           source: 'youtube',
         });
       }
@@ -81,7 +80,7 @@ export async function searchTracks(query: string): Promise<TrackMetadata[]> {
             duration: item.duration?.seconds,
             thumbnail:
               item.thumbnails?.[0]?.url ||
-              `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
+              `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`,
             source: 'youtube',
           });
         }
@@ -90,6 +89,107 @@ export async function searchTracks(query: string): Promise<TrackMetadata[]> {
   }
 
   return tracks;
+}
+
+/**
+ * Smart Search Suggestions from YouTube Music internal API
+ */
+export async function getSearchSuggestions(query: string): Promise<string[]> {
+  if (!query || query.trim().length === 0) return [];
+  const yt = await getInnertube();
+  try {
+    const suggestions = await yt.music.getSearchSuggestions(query.trim());
+    const results: string[] = [];
+    for (const section of suggestions || []) {
+      for (const item of (section as any).contents || []) {
+        const text =
+          item.suggestion?.text ||
+          item.title?.text ||
+          item.query ||
+          (typeof item.title === 'string' ? item.title : null);
+        if (text && !results.includes(text)) {
+          results.push(text);
+        }
+      }
+    }
+    return results.slice(0, 8);
+  } catch (err) {
+    console.warn('Failed to fetch search suggestions:', err);
+    return [];
+  }
+}
+
+/**
+ * Smart Radio & Up Next Engine from YouTube Music recommendation model
+ */
+export async function getRadioTracks(videoId: string): Promise<TrackMetadata[]> {
+  const yt = await getInnertube();
+  const upNext = await yt.music.getUpNext(videoId);
+  const tracks: TrackMetadata[] = [];
+
+  for (const item of (upNext as any).contents || []) {
+    const vId = item.video_id || item.endpoint?.payload?.videoId;
+    if (vId && !tracks.some((t) => t.id === vId)) {
+      tracks.push({
+        id: vId,
+        title: item.title?.text || (typeof item.title === 'string' ? item.title : 'Unknown Track'),
+        artist:
+          item.artists?.[0]?.name ||
+          item.author?.name ||
+          (item.artists && typeof item.artists === 'string' ? item.artists : 'Unknown Artist'),
+        album: item.album?.name,
+        duration: item.duration?.seconds,
+        thumbnail:
+          item.thumbnail?.contents?.[0]?.url ||
+          `https://i.ytimg.com/vi/${vId}/mqdefault.jpg`,
+        source: 'youtube',
+      });
+    }
+  }
+
+  return tracks;
+}
+
+/**
+ * Live Explore Feed from YouTube Music
+ */
+export async function getExploreFeed(): Promise<{ title: string; tracks: TrackMetadata[] }[]> {
+  const yt = await getInnertube();
+  try {
+    const explore = await yt.music.getExplore();
+    const sections: { title: string; tracks: TrackMetadata[] }[] = [];
+
+    for (const sec of (explore as any).sections || []) {
+      const sectionTitle = sec.title?.text || 'Trending Releases';
+      const secTracks: TrackMetadata[] = [];
+
+      for (const item of sec.contents || []) {
+        const vId = item.id || item.video_id || item.endpoint?.payload?.videoId;
+        if (vId) {
+          secTracks.push({
+            id: vId,
+            title: item.title?.text || (typeof item.title === 'string' ? item.title : 'Featured Track'),
+            artist: item.artists?.[0]?.name || item.author?.name || 'Various Artists',
+            album: item.album?.name,
+            duration: item.duration?.seconds,
+            thumbnail:
+              item.thumbnails?.[0]?.url ||
+              item.thumbnail?.contents?.[0]?.url ||
+              `https://i.ytimg.com/vi/${vId}/mqdefault.jpg`,
+            source: 'youtube',
+          });
+        }
+      }
+
+      if (secTracks.length > 0) {
+        sections.push({ title: sectionTitle, tracks: secTracks });
+      }
+    }
+    return sections;
+  } catch (err) {
+    console.warn('Failed to fetch explore feed:', err);
+    return [];
+  }
 }
 
 export async function getStreamUrl(
@@ -105,7 +205,6 @@ export async function getStreamUrl(
   }
 
   const yt = await getInnertube();
-  // VISIONOS provides unrestricted full-length byte-range streaming without PoToken 1MB cutoffs
   const clientsToTry: StreamClient[] = ['VISIONOS', 'IOS', 'YTMUSIC'];
   let lastError: Error | null = null;
 
@@ -171,7 +270,6 @@ export async function getAudioStream(
 
   let { response } = await attemptFetch(false);
 
-  // If cached URL expired or returned 403, refresh once with fresh decipher
   if (!response.ok && response.status !== 206) {
     const retry = await attemptFetch(true);
     response = retry.response;

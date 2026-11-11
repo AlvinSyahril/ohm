@@ -12,6 +12,8 @@ import {
   ChevronDown,
   Plus,
   Check,
+  Radio,
+  Sparkles,
 } from 'lucide-react';
 import { usePlayerStore, Track } from '../store/usePlayerStore';
 import { TrackArtwork, formatDuration } from './TrackCard';
@@ -27,6 +29,7 @@ export const QueueDrawer: React.FC = () => {
     favorites,
     toggleFavorite,
     playTrack,
+    startRadio,
     removeFromQueue,
     clearQueue,
     reorderQueue,
@@ -34,6 +37,8 @@ export const QueueDrawer: React.FC = () => {
     setInspectorTab,
     playlists,
     addTrackToPlaylist,
+    autoplay,
+    toggleAutoplay,
   } = usePlayerStore();
 
   const [playlistNotice, setPlaylistNotice] = useState<string | null>(null);
@@ -129,9 +134,19 @@ export const QueueDrawer: React.FC = () => {
             {/* Now Playing Header Strip */}
             {currentTrack && (
               <div className="p-3 border-b border-white/[0.06] bg-[#0c0e14]">
-                <div className="text-[10px] font-mono uppercase tracking-widest text-[#c8ff00] mb-2 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#c8ff00] animate-pulse" />
-                  <span>Now Playing</span>
+                <div className="text-[10px] font-mono uppercase tracking-widest text-[#c8ff00] mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#c8ff00] animate-pulse" />
+                    <span>Now Playing</span>
+                  </div>
+                  <button
+                    onClick={() => startRadio(currentTrack)}
+                    className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-[#c8ff00] cursor-pointer transition-colors"
+                    title="Launch algorithmic radio station"
+                  >
+                    <Radio className="w-3 h-3 text-[#c8ff00]" />
+                    <span>Start Radio</span>
+                  </button>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-lg bg-[#090a0c] overflow-hidden shrink-0 border border-white/[0.06]">
@@ -154,11 +169,26 @@ export const QueueDrawer: React.FC = () => {
               </div>
             )}
 
-            {/* Queue Section Bar */}
+            {/* Queue Section Bar with Autoplay Toggle */}
             <div className="px-4 py-2 border-b border-white/[0.05] flex items-center justify-between shrink-0 bg-[#090a0c]">
-              <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-                Queue ({queue.length})
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                  Queue ({queue.length})
+                </span>
+                <button
+                  onClick={toggleAutoplay}
+                  title="When active, continuously streams algorithmic recommendations from YouTube Music"
+                  className={`px-2 py-0.5 rounded text-[9px] font-mono border flex items-center gap-1 cursor-pointer transition-colors ${
+                    autoplay
+                      ? 'border-[#c8ff00]/40 bg-[#c8ff00]/10 text-[#c8ff00]'
+                      : 'border-white/[0.08] text-zinc-500'
+                  }`}
+                >
+                  <Sparkles className="w-2.5 h-2.5" />
+                  <span>AUTOPLAY {autoplay ? 'ON' : 'OFF'}</span>
+                </button>
+              </div>
+
               {queue.length > 0 && (
                 <button
                   onClick={clearQueue}
@@ -176,7 +206,7 @@ export const QueueDrawer: React.FC = () => {
                   <ListMusic className="w-8 h-8 mx-auto text-zinc-700" />
                   <p>Queue is empty.</p>
                   <p className="text-[11px] text-zinc-600">
-                    Click + on any song to queue it up.
+                    Click + or Start Radio to queue up songs.
                   </p>
                 </div>
               ) : (
@@ -208,7 +238,6 @@ export const QueueDrawer: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Actions & Reorder */}
                     <div className="flex items-center gap-1 shrink-0">
                       <div
                         onClick={(e) => e.stopPropagation()}
@@ -293,10 +322,21 @@ export const QueueDrawer: React.FC = () => {
                   </button>
                 </div>
 
+                {/* One-Click Smart Radio Action Button */}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => startRadio(displayTrack)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#c8ff00] text-[#090a0c] font-semibold text-xs flex items-center justify-center gap-2 hover:bg-[#d8ff33] cursor-pointer transition-colors shadow-md"
+                >
+                  <Radio className="w-4 h-4" />
+                  <span>Start Smart Radio From Track</span>
+                </motion.button>
+
                 <div className="p-3.5 rounded-xl bg-[#0e1016] border border-white/[0.07] space-y-2">
                   <div className="font-mono text-[10px] uppercase tracking-wider text-zinc-500 border-b border-white/[0.05] pb-1.5 flex items-center justify-between">
                     <span>Stream Telemetry</span>
-                    <span className="text-[#c8ff00]">LIVE</span>
+                    <span className="text-[#c8ff00]">LIVE YTM ENGINE</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-zinc-500 font-mono text-[11px]">Audio Codec</span>
@@ -307,8 +347,8 @@ export const QueueDrawer: React.FC = () => {
                     <span className="text-zinc-200 font-mono text-[11px]">HTTP 206 (VisionOS)</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-zinc-500 font-mono text-[11px]">Decipher Cache</span>
-                    <span className="text-[#c8ff00] font-mono text-[11px]">20 Min Warm Memory</span>
+                    <span className="text-zinc-500 font-mono text-[11px]">Smart Autoplay</span>
+                    <span className="text-[#c8ff00] font-mono text-[11px]">{autoplay ? 'ACTIVE' : 'OFF'}</span>
                   </div>
                 </div>
 

@@ -7,7 +7,7 @@ import {
   Heart,
   Check,
   MoreVertical,
-  Music,
+  Radio,
   Disc,
 } from 'lucide-react';
 import { Track, Playlist, usePlayerStore } from '../store/usePlayerStore';
@@ -33,7 +33,7 @@ export const upgradeThumbnail = (url?: string, videoId?: string): string => {
  * 1. High-res original / upgraded URL
  * 2. mqdefault.jpg
  * 3. default.jpg
- * 4. Generative acoustic geometric vector avatar (guarantees NO broken grey 3-dot boxes)
+ * 4. Generative acoustic geometric vector avatar
  */
 export const TrackArtwork: React.FC<{
   track: Track;
@@ -53,7 +53,6 @@ export const TrackArtwork: React.FC<{
 
   const currentSrc = candidateUrls[tier];
 
-  // If all URL candidates fail, render a stylish geometric acoustic artwork
   if (!currentSrc || tier >= candidateUrls.length) {
     const initials = (track.title || 'M')
       .split(' ')
@@ -62,7 +61,6 @@ export const TrackArtwork: React.FC<{
       .join('')
       .toUpperCase();
 
-    // Deterministic hue from track id
     const seed = track.id || track.title || 'ohm';
     const hue = (seed.charCodeAt(0) * 37 + (seed.charCodeAt(1) || 45) * 19) % 360;
 
@@ -74,7 +72,6 @@ export const TrackArtwork: React.FC<{
           border: '1px solid rgba(255, 255, 255, 0.08)',
         }}
       >
-        {/* Subtle geometric circles */}
         <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
           <div className="w-20 h-20 rounded-full border border-white" />
           <div className="w-12 h-12 rounded-full border border-white absolute" />
@@ -117,6 +114,7 @@ export const CompactTrackRow: React.FC<CompactTrackRowProps> = ({
     currentTrack,
     isPlaying,
     playTrack,
+    startRadio,
     togglePlay,
     addToQueue,
     queue,
@@ -212,6 +210,18 @@ export const CompactTrackRow: React.FC<CompactTrackRowProps> = ({
 
       {/* Right: Quick actions & Duration */}
       <div className="flex items-center gap-1 shrink-0 relative" ref={menuRef}>
+        {/* Start Smart Radio Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            startRadio(track);
+          }}
+          title="Start Smart Radio"
+          className="w-7 h-7 rounded flex items-center justify-center text-zinc-500 hover:text-[#c8ff00] opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+        >
+          <Radio className="w-3.5 h-3.5" />
+        </button>
+
         {/* Favorite button */}
         <button
           onClick={(e) => {
@@ -272,6 +282,17 @@ export const CompactTrackRow: React.FC<CompactTrackRowProps> = ({
               onClick={(e) => e.stopPropagation()}
               className="absolute right-0 top-8 w-48 bg-[#12151d] border border-white/[0.12] rounded-xl shadow-2xl p-1.5 z-30 select-none backdrop-blur-md"
             >
+              <button
+                onClick={() => {
+                  startRadio(track);
+                  setMenuOpen(false);
+                }}
+                className="w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 text-zinc-200 hover:text-[#c8ff00] hover:bg-white/[0.06] cursor-pointer mb-1 border-b border-white/[0.06] pb-1.5 font-medium"
+              >
+                <Radio className="w-3.5 h-3.5 text-[#c8ff00]" />
+                <span>Start Smart Radio</span>
+              </button>
+
               <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-white/[0.06] mb-1">
                 Add to Playlist
               </div>
@@ -322,7 +343,7 @@ export const CarouselTrackCard: React.FC<CarouselTrackCardProps> = ({
   subtitle,
   onPlay,
 }) => {
-  const { currentTrack, isPlaying, toggleFavorite, favorites } = usePlayerStore();
+  const { currentTrack, isPlaying, toggleFavorite, favorites, startRadio } = usePlayerStore();
 
   const isCurrent = currentTrack?.id === track.id;
   const isCurrentlyPlaying = isCurrent && isPlaying;
@@ -362,20 +383,34 @@ export const CarouselTrackCard: React.FC<CarouselTrackCardProps> = ({
           </motion.div>
         </div>
 
-        {/* Quick Save Heart */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleFavorite(track);
-          }}
-          className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-opacity cursor-pointer ${
-            isFav
-              ? 'bg-[#c8ff00] text-[#090a0c] opacity-100'
-              : 'bg-black/60 text-white hover:text-[#c8ff00] opacity-0 group-hover:opacity-100'
-          }`}
-        >
-          <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
-        </button>
+        {/* Quick Top Actions: Radio & Heart */}
+        <div className="absolute top-2 right-2 flex items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              startRadio(track);
+            }}
+            title="Start Smart Radio"
+            className="w-7 h-7 rounded-full flex items-center justify-center bg-black/60 text-white hover:text-[#c8ff00] backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+          >
+            <Radio className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFavorite(track);
+            }}
+            title={isFav ? 'Remove from Library' : 'Save to Library'}
+            className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-opacity cursor-pointer ${
+              isFav
+                ? 'bg-[#c8ff00] text-[#090a0c] opacity-100'
+                : 'bg-black/60 text-white hover:text-[#c8ff00] opacity-0 group-hover:opacity-100'
+            }`}
+          >
+            <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Info */}
@@ -412,6 +447,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
     currentTrack,
     isPlaying,
     playTrack,
+    startRadio,
     togglePlay,
     addToQueue,
     queue,
@@ -483,6 +519,14 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           onClick={(e) => e.stopPropagation()}
           className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10"
         >
+          <button
+            onClick={() => startRadio(track)}
+            title="Start Smart Radio"
+            className="w-7 h-7 rounded-full flex items-center justify-center border bg-[#090a0c]/85 border-white/[0.15] text-white hover:text-[#c8ff00] hover:border-[#c8ff00]/40 transition-colors cursor-pointer"
+          >
+            <Radio className="w-3.5 h-3.5" />
+          </button>
+
           <button
             onClick={() => toggleFavorite(track)}
             title={isFav ? 'Remove from Library' : 'Save to Library'}

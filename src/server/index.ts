@@ -1,7 +1,14 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { Readable } from 'node:stream';
-import { searchTracks, getStreamUrl, getAudioStream } from './resolvers/youtube.js';
+import {
+  searchTracks,
+  getStreamUrl,
+  getAudioStream,
+  getSearchSuggestions,
+  getRadioTracks,
+  getExploreFeed,
+} from './resolvers/youtube.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -27,6 +34,45 @@ app.get('/api/search', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Search error:', err);
     res.status(500).json({ error: 'Failed to search tracks', details: err?.message || String(err) });
+  }
+});
+
+// Smart Search Suggestions endpoint
+app.get('/api/search/suggestions', async (req: Request, res: Response) => {
+  const query = req.query.q as string;
+  if (!query || query.trim().length === 0) {
+    return res.json({ suggestions: [] });
+  }
+
+  try {
+    const suggestions = await getSearchSuggestions(query);
+    res.json({ query, suggestions });
+  } catch (err: any) {
+    console.error('Search suggestions error:', err);
+    res.status(500).json({ error: 'Failed to get suggestions', details: err?.message || String(err) });
+  }
+});
+
+// Smart Radio / Algorithmic Up Next endpoint
+app.get('/api/radio/:videoId', async (req: Request, res: Response) => {
+  const { videoId } = req.params;
+  try {
+    const tracks = await getRadioTracks(videoId);
+    res.json({ seedVideoId: videoId, count: tracks.length, tracks });
+  } catch (err: any) {
+    console.error('Radio resolve error:', err);
+    res.status(500).json({ error: 'Failed to resolve radio tracks', details: err?.message || String(err) });
+  }
+});
+
+// Live Explore Feed endpoint
+app.get('/api/explore', async (_req: Request, res: Response) => {
+  try {
+    const sections = await getExploreFeed();
+    res.json({ sections });
+  } catch (err: any) {
+    console.error('Explore feed error:', err);
+    res.status(500).json({ error: 'Failed to fetch explore feed', details: err?.message || String(err) });
   }
 });
 
