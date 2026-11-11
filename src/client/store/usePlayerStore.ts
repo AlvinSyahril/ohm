@@ -11,14 +11,25 @@ export interface Track {
   source: 'youtube';
 }
 
-export type ActiveTab = 'discover' | 'search' | 'library' | 'queue';
+export interface Playlist {
+  id: string;
+  name: string;
+  tracks: Track[];
+  createdAt: number;
+}
+
+export type ActiveTab = 'discover' | 'explore' | 'library';
 export type RepeatMode = 'off' | 'all' | 'one';
+export type InspectorTab = 'queue' | 'intel';
 
 interface PlayerState {
   currentTrack: Track | null;
   queue: Track[];
   history: Track[];
   favorites: Track[];
+  playlists: Playlist[];
+  activePlaylistId: string | null;
+
   isPlaying: boolean;
   isLoadingStream: boolean;
   currentTime: number;
@@ -27,18 +38,25 @@ interface PlayerState {
   isMuted: boolean;
   repeatMode: RepeatMode;
   shuffle: boolean;
+
   activeTab: ActiveTab;
   isQueueOpen: boolean;
+  inspectorTab: InspectorTab;
   sfxEnabled: boolean;
+
   searchQuery: string;
   searchResults: Track[];
   isSearching: boolean;
+  activeMood: string | null;
 
   // Actions
   setActiveTab: (tab: ActiveTab) => void;
   setQueueOpen: (open: boolean) => void;
+  setInspectorTab: (tab: InspectorTab) => void;
   toggleSfx: () => void;
   setSearchQuery: (q: string) => void;
+  setActiveMood: (mood: string | null) => void;
+  setActivePlaylistId: (id: string | null) => void;
   performSearch: (q: string) => Promise<void>;
 
   playTrack: (track: Track, newQueue?: Track[]) => void;
@@ -53,11 +71,19 @@ interface PlayerState {
   toggleMute: () => void;
   toggleRepeat: () => void;
   toggleShuffle: () => void;
+
   addToQueue: (track: Track) => void;
   removeFromQueue: (id: string) => void;
   clearQueue: () => void;
+  reorderQueue: (fromIndex: number, toIndex: number) => void;
+
   toggleFavorite: (track: Track) => void;
   isFavorite: (id: string) => boolean;
+
+  createPlaylist: (name: string) => string;
+  deletePlaylist: (id: string) => void;
+  addTrackToPlaylist: (playlistId: string, track: Track) => void;
+  removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
 }
 
 const loadFavorites = (): Track[] => {
@@ -77,11 +103,45 @@ const saveFavorites = (tracks: Track[]) => {
   }
 };
 
+const loadPlaylists = (): Playlist[] => {
+  try {
+    const raw = localStorage.getItem('ohm_playlists');
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // fallback
+  }
+  return [
+    {
+      id: 'pl-synth-classics',
+      name: 'Cyberpunk & Synth',
+      tracks: [],
+      createdAt: Date.now() - 86400000,
+    },
+    {
+      id: 'pl-late-night',
+      name: 'Late Night Chill',
+      tracks: [],
+      createdAt: Date.now() - 43200000,
+    },
+  ];
+};
+
+const savePlaylists = (playlists: Playlist[]) => {
+  try {
+    localStorage.setItem('ohm_playlists', JSON.stringify(playlists));
+  } catch {
+    // Ignore storage errors
+  }
+};
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTrack: null,
   queue: [],
   history: [],
   favorites: loadFavorites(),
+  playlists: loadPlaylists(),
+  activePlaylistId: null,
+
   isPlaying: false,
   isLoadingStream: false,
   currentTime: 0,
@@ -90,21 +150,30 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isMuted: false,
   repeatMode: 'off',
   shuffle: false,
+
   activeTab: 'discover',
   isQueueOpen: true,
+  inspectorTab: 'queue',
   sfxEnabled: true,
+
   searchQuery: '',
   searchResults: [],
   isSearching: false,
+  activeMood: 'All',
 
   setActiveTab: (tab) => {
     sfx.playTap();
-    set({ activeTab: tab });
+    set({ activeTab: tab, activePlaylistId: null });
   },
 
   setQueueOpen: (open) => {
     sfx.playTap();
     set({ isQueueOpen: open });
+  },
+
+  setInspectorTab: (tab) => {
+    sfx.playTap();
+    set({ inspectorTab: tab });
   },
 
   toggleSfx: () => {
@@ -115,6 +184,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   setSearchQuery: (q) => set({ searchQuery: q }),
+  setActiveMood: (mood) => set({ activeMood: mood }),
+  setActivePlaylistId: (id) => set({ activePlaylistId: id }),
 
   performSearch: async (q) => {
     if (!q.trim()) return;
@@ -282,6 +353,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ queue: [] });
   },
 
+  reorderQueue: (fromIndex, toIndex) => {
+    const { queue } = get();
+    if (fromIndex < 0 || fromIndex >= queue.length || toIndex < 0 || toIndex >= queue.length) return;
+    const updated = [...queue];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    set({ queue: updated });
+  },
+
   toggleFavorite: (track) => {
     sfx.playTap();
     const { favorites } = get();
@@ -294,4 +374,49 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   isFavorite: (id) => get().favorites.some((t) => t.id === id),
+
+  createPlaylist: (name) => {
+    sfx.playEngage();
+    const newPlaylist: Playlist = {
+      id: `pl-${Date.now()}`,
+      name: name.trim() || 'Untitled Playlist',
+      tracks: [],
+      createdAt: Date.now(),
+    };
+    const updated = [...get().playlists, newPlaylist];
+    savePlaylists(updated);
+    set({ playlists: updated, activePlaylistId: newPlaylist.id, activeTab: 'library' });
+    return newPlaylist.id;
+  },
+
+  deletePlaylist: (id) => {
+    sfx.playTap();
+    const updated = get().playlists.filter((p) => p.id !== id);
+    savePlaylists(updated);
+    set({
+      playlists: updated,
+      activePlaylistId: get().activePlaylistId === id ? null : get().activePlaylistId,
+    });
+  },
+
+  addTrackToPlaylist: (playlistId, track) => {
+    sfx.playTap();
+    const updated = get().playlists.map((pl) => {
+      if (pl.id !== playlistId) return pl;
+      if (pl.tracks.some((t) => t.id === track.id)) return pl;
+      return { ...pl, tracks: [...pl.tracks, track] };
+    });
+    savePlaylists(updated);
+    set({ playlists: updated });
+  },
+
+  removeTrackFromPlaylist: (playlistId, trackId) => {
+    sfx.playTap();
+    const updated = get().playlists.map((pl) => {
+      if (pl.id !== playlistId) return pl;
+      return { ...pl, tracks: pl.tracks.filter((t) => t.id !== trackId) };
+    });
+    savePlaylists(updated);
+    set({ playlists: updated });
+  },
 }));
