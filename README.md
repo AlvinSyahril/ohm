@@ -12,7 +12,22 @@
       <img src="https://img.shields.io/badge/GitHub-Releases-181b19?style=for-the-badge" alt="GitHub Releases" />
     </a>
   </p>
+
+  <br />
+
+  <img src="docs/screenshots/home.png" alt="Ohm Home and Library view" width="100%" />
 </div>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/stage-lyrics.png" alt="Ohm Stage view with synced lyrics" />
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/lyric-card-studio.png" alt="Ohm Lyric Card Studio export modal" />
+    </td>
+  </tr>
+</table>
 
 ---
 
