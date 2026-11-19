@@ -2,7 +2,7 @@
 
 **Ohm** is a quiet, ad-free desktop music player I built because most streaming apps feel bloated.
 
-It plays clean audio with dual-deck crossfading, a 3-band EQ, loudness normalization, and synced lyrics — plus built-in **Lyric Card** and **Sound Receipt** exporters when you want to share a line without taking a messy screenshot.
+It plays clean audio with dual-deck crossfading, a 3-band EQ, loudness normalization, and synced lyrics plus built-in **Lyric Card** and **Sound Receipt** exporters when you want to share a line without taking a messy screenshot.
 
 ---
 
