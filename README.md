@@ -19,7 +19,7 @@ It plays clean audio with dual-deck crossfading, a 3-band EQ, loudness normaliza
 
 ## Download (Windows)
 
-Grab the latest Windows installer (`Ohm-Setup-*.exe`) from [GitHub Releases](https://github.com/AlvinSyahril/ohm/releases).
+Download the latest Windows installer (`Ohm-Setup-*.exe`) directly from **[nexorastudio.my.id/apps/ohm](https://www.nexorastudio.my.id/apps/ohm)** (or grab it from the [GitHub Releases](https://github.com/AlvinSyahril/ohm/releases) mirror).
 
 ---
 
