@@ -93,6 +93,7 @@ export const DesktopBridge: React.FC = () => {
     const endMs =
       isPlaying && startMs && totalSec > 0 ? startMs + totalSec * 1000 : undefined;
 
+    let cancelled = false;
     desktop
       .setDiscordPresence({
         enabled: discordRpcEnabled,
@@ -110,9 +111,15 @@ export const DesktopBridge: React.FC = () => {
           : null,
       })
       .then((status) => {
-        setDiscordRpcStatus(status);
+        if (!cancelled) {
+          setDiscordRpcStatus(status);
+        }
       })
       .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     currentTrack?.id,
     currentTrack?.title,

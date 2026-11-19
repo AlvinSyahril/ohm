@@ -29,6 +29,17 @@ interface ChangelogRelease {
 
 const APP_CHANGELOG: ChangelogRelease[] = [
   {
+    version: '0.2.0',
+    label: 'Latest',
+    items: [
+      'Shareable Lyric Card Studio: pick 1-4 lines or use Best Part auto-detection, style with Obsidian Matte, Editorial Paper, or Cover Palette, and export crisp PNGs.',
+      'Your Sound Receipt: generate your weekly or all-time listening receipt directly from local playback stats.',
+      'Discord Rich Presence (Desktop): shows your live listening status with play/pause timestamps and optional custom app ID.',
+      'Audio quality & tuning: smart Opus/AAC stream selection, Pure Path filter bypass, live codec/bitrate readout, and Loudness Normalization.',
+      'Performance & polish: smoother Stage/Lyrics animations, chunked bundle loading, and hardened desktop/updater reliability.',
+    ],
+  },
+  {
     version: '0.1.0',
     label: 'First Release',
     items: [

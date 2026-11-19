@@ -42,6 +42,9 @@ export class AudioEngine {
     { src: MediaElementAudioSourceNode; gain: GainNode }
   >();
   private deckGains: Record<DeckId, GainNode | null> = { a: null, b: null };
+  private deckSum: GainNode | null = null;
+  private pureGain: GainNode | null = null;
+  private dspGain: GainNode | null = null;
   private lowFilter: BiquadFilterNode | null = null;
   private midFilter: BiquadFilterNode | null = null;
   private highFilter: BiquadFilterNode | null = null;
@@ -91,6 +94,19 @@ export class AudioEngine {
     return this.decks[id];
   }
 
+  isPurePath(): boolean {
+    return (
+      !this.loudnessNormEnabled &&
+      this.eqBands.low === 0 &&
+      this.eqBands.mid === 0 &&
+      this.eqBands.high === 0
+    );
+  }
+
+  getSampleRate(): number | null {
+    return this.ctx?.sampleRate ?? null;
+  }
+
   /** Sample normalized (0..1) bass and overall spectral energy for calm ambient visuals. */
   sampleAtmosphere(): { bass: number; overall: number } {
     if (!this.analyser || !this.freqBins || !this.ctx || this.ctx.state !== 'running') {
@@ -114,13 +130,13 @@ export class AudioEngine {
   }
 
   private bindDeck(id: DeckId, el: HTMLAudioElement | null) {
-    if (!el || !this.ctx || !this.lowFilter) return;
+    if (!el || !this.ctx || !this.deckSum) return;
     let entry = this.wired.get(el);
     if (!entry) {
       const src = this.ctx.createMediaElementSource(el);
       const gain = this.ctx.createGain();
       src.connect(gain);
-      gain.connect(this.lowFilter);
+      gain.connect(this.deckSum);
       entry = { src, gain };
       this.wired.set(el, entry);
     }
@@ -158,7 +174,19 @@ export class AudioEngine {
           this.fallbackOnly = true;
           return false;
         }
-        const ctx = new AudioCtx();
+        let ctx: AudioContext;
+        try {
+          ctx = new AudioCtx({ latencyHint: 'playback' });
+        } catch {
+          ctx = new AudioCtx();
+        }
+        const deckSum = ctx.createGain();
+        const pureGain = ctx.createGain();
+        const dspGain = ctx.createGain();
+        const initialPure = this.isPurePath();
+        pureGain.gain.value = initialPure ? 1 : 0;
+        dspGain.gain.value = initialPure ? 0 : 1;
+
         const low = ctx.createBiquadFilter();
         low.type = 'lowshelf';
         low.frequency.value = 100;
@@ -185,15 +213,25 @@ export class AudioEngine {
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.85;
 
+        // Parallel Pure Path (flat + unnormalized) and DSP Path (EQ / Loudness Norm)
+        deckSum.connect(pureGain);
+        pureGain.connect(master);
+
+        deckSum.connect(low);
         low.connect(mid);
         mid.connect(high);
         high.connect(normalizer);
         normalizer.connect(normalizerMakeup);
-        normalizerMakeup.connect(master);
+        normalizerMakeup.connect(dspGain);
+        dspGain.connect(master);
+
         master.connect(analyser);
         analyser.connect(ctx.destination);
 
         this.ctx = ctx;
+        this.deckSum = deckSum;
+        this.pureGain = pureGain;
+        this.dspGain = dspGain;
         this.lowFilter = low;
         this.midFilter = mid;
         this.highFilter = high;
@@ -208,6 +246,7 @@ export class AudioEngine {
         this.bindDeck('b', this.decks.b);
         this.applyEqToNodes();
         this.applyNormalizerToNodes();
+        this.applySignalPath();
         this.applyGains();
       } catch {
         this.fallbackOnly = true;
@@ -243,11 +282,13 @@ export class AudioEngine {
       high: clampGain(bands.high),
     };
     this.applyEqToNodes();
+    this.applySignalPath();
   }
 
   setLoudnessNormalization(enabled: boolean) {
     this.loudnessNormEnabled = enabled;
     this.applyNormalizerToNodes();
+    this.applySignalPath();
   }
 
   /** Immediately stop any ongoing fade and give exclusive unity gain to the chosen deck. */
@@ -330,6 +371,14 @@ export class AudioEngine {
       this.normalizer.ratio.setTargetAtTime(1, now, 0.04);
       this.normalizerMakeup.gain.setTargetAtTime(1, now, 0.04);
     }
+  }
+
+  private applySignalPath() {
+    if (!this.graphReady || !this.ctx || !this.pureGain || !this.dspGain) return;
+    const now = this.ctx.currentTime;
+    const pure = this.isPurePath();
+    this.pureGain.gain.setTargetAtTime(pure ? 1 : 0, now, 0.015);
+    this.dspGain.gain.setTargetAtTime(pure ? 0 : 1, now, 0.015);
   }
 
   private applyGains() {

@@ -16,6 +16,8 @@ interface CachedStream {
   url: string;
   bitrate?: number;
   format: string;
+  codec?: string;
+  sampleRate?: number;
   contentLength?: number;
   clientUsed: StreamClient;
   expiresAt: number;
@@ -1199,6 +1201,41 @@ export async function getPlaylistDetails(id: string): Promise<PlaylistDetails> {
   return details;
 }
 
+function parseAudioCodec(mimeType?: string): string | undefined {
+  if (!mimeType) return undefined;
+  const lower = mimeType.toLowerCase();
+  if (lower.includes('opus')) return 'opus';
+  if (lower.includes('mp4a') || lower.includes('aac')) return 'aac';
+  if (lower.includes('flac')) return 'flac';
+  if (lower.includes('vorbis')) return 'vorbis';
+  return undefined;
+}
+
+function pickBestAudioFormat(info: Awaited<ReturnType<Innertube['getBasicInfo']>>) {
+  const adaptive = info.streaming_data?.adaptive_formats ?? [];
+  const audioOnly = adaptive.filter(
+    (fmt) => fmt.has_audio && !fmt.has_video && typeof fmt.bitrate === 'number' && fmt.bitrate > 0
+  );
+
+  if (audioOnly.length > 0) {
+    // Prefer Opus (~130-160 kbps VBR) over 128 kbps AAC-LC for cleaner transients & stereo imaging
+    const scoreFormat = (fmt: (typeof audioOnly)[number]) => {
+      const bitrate = fmt.bitrate ?? 0;
+      const mime = (fmt.mime_type || '').toLowerCase();
+      const isOpus = mime.includes('opus') || fmt.itag === 251 || fmt.itag === 774;
+      return isOpus ? bitrate * 1.25 : bitrate;
+    };
+
+    audioOnly.sort((a, b) => scoreFormat(b) - scoreFormat(a));
+    return audioOnly[0];
+  }
+
+  return info.chooseFormat({
+    type: 'audio',
+    quality: 'best',
+  });
+}
+
 export async function getStreamUrl(
   videoId: string,
   forceRefresh = false
@@ -1223,10 +1260,7 @@ export async function getStreamUrl(
     for (const client of clientsToTry) {
       try {
         const info = await yt.getBasicInfo(videoId, { client });
-        const audioFormat = info.chooseFormat({
-          type: 'audio',
-          quality: 'best',
-        });
+        const audioFormat = pickBestAudioFormat(info);
 
         if (!audioFormat) continue;
 
@@ -1237,6 +1271,11 @@ export async function getStreamUrl(
           url: decipheredUrl,
           bitrate: audioFormat.bitrate,
           format: audioFormat.mime_type?.split(';')[0] || 'audio/mp4',
+          codec: parseAudioCodec(audioFormat.mime_type),
+          sampleRate:
+            typeof audioFormat.audio_sample_rate === 'number' && audioFormat.audio_sample_rate > 0
+              ? audioFormat.audio_sample_rate
+              : undefined,
           contentLength: audioFormat.content_length,
           clientUsed: client,
           expiresAt: Date.now() + 20 * 60 * 1000,

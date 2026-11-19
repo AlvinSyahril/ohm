@@ -413,8 +413,13 @@ function layoutLyricBlocks(
 ): { blocks: PreparedBlock[]; totalHeight: number; blockGap: number } {
   const roles = assignLineRoles(lines.length);
   let heroSize = baseHeroSize;
+  let lastLayout: { blocks: PreparedBlock[]; totalHeight: number; blockGap: number } = {
+    blocks: [],
+    totalHeight: 0,
+    blockGap: 16,
+  };
 
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  while (heroSize >= 28) {
     const setupSize = Math.round(heroSize * 0.72);
     const releaseSize = Math.round(heroSize * 0.72);
     const blockGap = Math.round(heroSize * 0.42);
@@ -460,13 +465,14 @@ function layoutLyricBlocks(
       });
     });
 
-    if (totalHeight <= maxHeight || heroSize <= 34) {
-      return { blocks, totalHeight, blockGap };
+    lastLayout = { blocks, totalHeight, blockGap };
+    if (totalHeight <= maxHeight || heroSize <= 28) {
+      return lastLayout;
     }
     heroSize -= 4;
   }
 
-  return { blocks: [], totalHeight: 0, blockGap: 16 };
+  return lastLayout;
 }
 
 function computeDynamicHeroSize(lines: LyricCardLine[], aspect: LyricCardAspect): number {
@@ -511,6 +517,92 @@ export function drawFilmGrain(ctx: CanvasRenderingContext2D, width: number, heig
   ctx.restore();
 }
 
+export function drawStudioBackdrop(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  options: {
+    variant: 'paper' | 'obsidian';
+    glowColor?: string;
+    paperColors?: [string, string];
+    grainAlpha?: number;
+  }
+): void {
+  if (options.variant === 'paper') {
+    const [top, bottom] = options.paperColors ?? ['#e5e1d8', '#dbd6cb'];
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, top);
+    grad.addColorStop(1, bottom);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    drawFilmGrain(ctx, w, h, options.grainAlpha ?? 0.024);
+    return;
+  }
+
+  ctx.fillStyle = '#111312';
+  ctx.fillRect(0, 0, w, h);
+  const glow = ctx.createRadialGradient(w * 0.29, h * 0.24, 20, w * 0.29, h * 0.24, Math.max(w, h) * 0.65);
+  glow.addColorStop(0, options.glowColor ?? 'rgba(46, 184, 114, 0.12)');
+  glow.addColorStop(1, 'rgba(17, 19, 18, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, w, h);
+  drawFilmGrain(ctx, w, h, options.grainAlpha ?? 0.022);
+}
+
+export interface PreparedCardFrame {
+  cardX: number;
+  cardY: number;
+  cardW: number;
+  cardH: number;
+  cardRadius: number;
+  scaleFactor: number;
+}
+
+export function prepareCardFrame(
+  ctx: CanvasRenderingContext2D,
+  canvasW: number,
+  canvasH: number,
+  aspect: LyricCardAspect,
+  roundedCorners: boolean,
+  isLightTheme: boolean,
+  drawBackdrop: () => void
+): PreparedCardFrame {
+  let cardX = 0;
+  let cardY = 0;
+  let cardW = canvasW;
+  let cardH = canvasH;
+  const isStoryFloating = roundedCorners && aspect === '9:16';
+  const cardRadius = roundedCorners ? (isStoryFloating ? 40 : 56) : 0;
+
+  if (isStoryFloating) {
+    drawBackdrop();
+    cardW = Math.round(canvasW * 0.74);
+    cardH = Math.round(cardW * 1.25);
+    cardX = Math.round((canvasW - cardW) / 2);
+    cardY = Math.round((canvasH - cardH) / 2);
+
+    ctx.save();
+    ctx.shadowColor = isLightTheme ? 'rgba(20, 18, 15, 0.16)' : 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = isLightTheme ? 44 : 56;
+    ctx.shadowOffsetY = 18;
+    ctx.fillStyle = isLightTheme ? '#f2f0eb' : '#0c0e0d';
+    drawRoundedRectPath(ctx, cardX, cardY, cardW, cardH, cardRadius);
+    ctx.fill();
+    ctx.restore();
+  } else {
+    ctx.clearRect(0, 0, canvasW, canvasH);
+  }
+
+  return {
+    cardX,
+    cardY,
+    cardW,
+    cardH,
+    cardRadius,
+    scaleFactor: cardW / 1080,
+  };
+}
+
 function drawThemeBackdrop(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -520,17 +612,10 @@ function drawThemeBackdrop(
   albumVibe: boolean
 ) {
   if (theme === 'paper') {
-    const grad = ctx.createLinearGradient(0, 0, w, h);
-    if (albumVibe) {
-      grad.addColorStop(0, palette.paperRule);
-      grad.addColorStop(1, palette.paperTint);
-    } else {
-      grad.addColorStop(0, '#e5e1d8');
-      grad.addColorStop(1, '#dbd6cb');
-    }
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-    drawFilmGrain(ctx, w, h, 0.024);
+    drawStudioBackdrop(ctx, w, h, {
+      variant: 'paper',
+      paperColors: albumVibe ? [palette.paperRule, palette.paperTint] : ['#e5e1d8', '#dbd6cb'],
+    });
     return;
   }
 
@@ -550,16 +635,10 @@ function drawThemeBackdrop(
     return;
   }
 
-  // 'obsidian' ambient studio backdrop
-  ctx.fillStyle = '#111312';
-  ctx.fillRect(0, 0, w, h);
-
-  const obsGlow = ctx.createRadialGradient(w * 0.3, h * 0.24, 20, w * 0.3, h * 0.24, Math.max(w, h) * 0.65);
-  obsGlow.addColorStop(0, albumVibe ? palette.bgTop : 'rgba(46, 184, 114, 0.12)');
-  obsGlow.addColorStop(1, 'rgba(17, 19, 18, 0)');
-  ctx.fillStyle = obsGlow;
-  ctx.fillRect(0, 0, w, h);
-  drawFilmGrain(ctx, w, h, 0.022);
+  drawStudioBackdrop(ctx, w, h, {
+    variant: 'obsidian',
+    glowColor: albumVibe ? palette.bgTop : 'rgba(46, 184, 114, 0.12)',
+  });
 }
 
 export function renderLyricCard(options: RenderLyricCardOptions): void {
@@ -585,36 +664,18 @@ export function renderLyricCard(options: RenderLyricCardOptions): void {
   const firstTimestamp = formatLyricTimestamp(cleanLines[0]?.timeMs);
   const palette = extractCoverPalette(artworkImg);
 
-  let cardX = 0;
-  let cardY = 0;
-  let cardW = canvasW;
-  let cardH = canvasH;
-  const isStoryFloating = roundedCorners && aspect === '9:16';
-  const cardRadius = roundedCorners ? (isStoryFloating ? 40 : 56) : 0;
-
-  if (isStoryFloating) {
-    drawThemeBackdrop(ctx, canvasW, canvasH, theme, palette, albumVibe);
-
-    cardW = Math.round(canvasW * 0.74);
-    cardH = Math.round(cardW * 1.25);
-    cardX = Math.round((canvasW - cardW) / 2);
-    cardY = Math.round((canvasH - cardH) / 2);
-
-    ctx.save();
-    ctx.shadowColor = theme === 'paper' ? 'rgba(20, 18, 15, 0.16)' : 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = theme === 'paper' ? 44 : 56;
-    ctx.shadowOffsetY = 18;
-    ctx.fillStyle = theme === 'paper' ? '#f2f0eb' : '#0c0e0d';
-    drawRoundedRectPath(ctx, cardX, cardY, cardW, cardH, cardRadius);
-    ctx.fill();
-    ctx.restore();
-  } else {
-    ctx.clearRect(0, 0, canvasW, canvasH);
-  }
+  const { cardX, cardY, cardW, cardH, cardRadius, scaleFactor } = prepareCardFrame(
+    ctx,
+    canvasW,
+    canvasH,
+    aspect,
+    roundedCorners,
+    theme === 'paper',
+    () => drawThemeBackdrop(ctx, canvasW, canvasH, theme, palette, albumVibe)
+  );
 
   const width = cardW;
   const height = cardH;
-  const scaleFactor = width / 1080;
   const padX = Math.round(92 * scaleFactor);
   const padY = Math.round((aspect === '1:1' ? 84 : 96) * scaleFactor);
   const contentW = width - padX * 2;
@@ -653,28 +714,29 @@ export function renderLyricCard(options: RenderLyricCardOptions): void {
     const railColor = albumVibe ? palette.accent : EMERALD;
 
     // Top-left cover + metadata
-    const thumbSize = aspect === '1:1' ? 88 : 98;
-    drawCoverThumb(ctx, artworkImg, padX, padY, thumbSize, 16, true);
+    const thumbSize = Math.round((aspect === '1:1' ? 88 : 98) * scaleFactor);
+    drawCoverThumb(ctx, artworkImg, padX, padY, thumbSize, Math.round(16 * scaleFactor), true);
 
-    const metaX = padX + thumbSize + 28;
-    const metaMaxW = contentW - thumbSize - 28;
+    const metaGap = Math.round(28 * scaleFactor);
+    const metaX = padX + thumbSize + metaGap;
+    const metaMaxW = contentW - thumbSize - metaGap;
 
     ctx.fillStyle = '#f5f5f3';
-    ctx.font = `700 34px ${SANS_STACK}`;
+    ctx.font = `700 ${Math.round(34 * scaleFactor)}px ${SANS_STACK}`;
     ctx.textBaseline = 'top';
-    ctx.fillText(truncateText(ctx, track.title, metaMaxW), metaX, padY + 12);
+    ctx.fillText(truncateText(ctx, track.title, metaMaxW), metaX, padY + Math.round(12 * scaleFactor));
 
     const subText = track.album ? `${track.artist} · ${track.album}` : track.artist;
     ctx.fillStyle = '#787e7b';
-    ctx.font = `500 24px ${SANS_STACK}`;
-    ctx.fillText(truncateText(ctx, subText, metaMaxW), metaX, padY + 56);
+    ctx.font = `500 ${Math.round(24 * scaleFactor)}px ${SANS_STACK}`;
+    ctx.fillText(truncateText(ctx, subText, metaMaxW), metaX, padY + Math.round(56 * scaleFactor));
 
     // Lyric zone with left #2eb872 vertical accent bar
-    const headerBottom = padY + thumbSize + 44;
-    const footerTop = height - padY - 48;
-    const lyricZoneH = Math.max(240, footerTop - headerBottom);
-    const barGap = 32;
-    const barW = 6;
+    const headerBottom = padY + thumbSize + Math.round(44 * scaleFactor);
+    const footerTop = height - padY - Math.round(48 * scaleFactor);
+    const lyricZoneH = Math.max(Math.round(240 * scaleFactor), footerTop - headerBottom);
+    const barGap = Math.round(32 * scaleFactor);
+    const barW = Math.max(4, Math.round(6 * scaleFactor));
     const baseHero = Math.round(computeDynamicHeroSize(cleanLines, aspect) * scaleFactor);
 
     const { blocks, totalHeight, blockGap } = layoutLyricBlocks(
@@ -714,12 +776,12 @@ export function renderLyricCard(options: RenderLyricCardOptions): void {
 
     // Footer: ohm• left, timestamp right
     const footerBaseline = height - padY;
-    drawOhmWordmark(ctx, padX, footerBaseline, 34, '#787e7b', false, railColor);
+    drawOhmWordmark(ctx, padX, footerBaseline, Math.round(34 * scaleFactor), '#787e7b', false, railColor);
 
     if (firstTimestamp) {
       ctx.save();
       ctx.fillStyle = '#686e6b';
-      ctx.font = `500 26px ${SANS_STACK}`;
+      ctx.font = `500 ${Math.round(26 * scaleFactor)}px ${SANS_STACK}`;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(firstTimestamp, width - padX, footerBaseline);
@@ -798,7 +860,7 @@ export function renderLyricCard(options: RenderLyricCardOptions): void {
       if (firstTimestamp) {
         ctx.save();
         ctx.fillStyle = albumVibe ? '#4d4a44' : '#78746d';
-        ctx.font = `500 26px ${SANS_STACK}`;
+        ctx.font = `500 ${Math.round(26 * scaleFactor)}px ${SANS_STACK}`;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'alphabetic';
         ctx.fillText(firstTimestamp, width - padX, footerBaseline);
@@ -859,25 +921,25 @@ export function renderLyricCard(options: RenderLyricCardOptions): void {
   ctx.fillStyle = palette.rule;
   ctx.fillRect(padX, ruleY, contentW, 2);
 
-  const thumbSize = 84;
-  const thumbY = ruleY + 28;
-  drawCoverThumb(ctx, artworkImg, padX, thumbY, thumbSize, 14, true);
+  const thumbSize = Math.round(84 * scaleFactor);
+  const thumbY = ruleY + Math.round(28 * scaleFactor);
+  drawCoverThumb(ctx, artworkImg, padX, thumbY, thumbSize, Math.round(14 * scaleFactor), true);
 
-  const metaX = padX + thumbSize + 24;
-  const metaMaxW = contentW - thumbSize - 140;
+  const metaX = padX + thumbSize + Math.round(24 * scaleFactor);
+  const metaMaxW = contentW - thumbSize - Math.round(140 * scaleFactor);
 
   ctx.save();
   ctx.fillStyle = '#f4f4f0';
-  ctx.font = `600 29px ${SANS_STACK}`;
+  ctx.font = `600 ${Math.round(29 * scaleFactor)}px ${SANS_STACK}`;
   ctx.textBaseline = 'top';
-  ctx.fillText(truncateText(ctx, track.title, metaMaxW), metaX, thumbY + 12);
+  ctx.fillText(truncateText(ctx, track.title, metaMaxW), metaX, thumbY + Math.round(12 * scaleFactor));
 
   ctx.fillStyle = '#8a9094';
-  ctx.font = `500 23px ${SANS_STACK}`;
-  ctx.fillText(truncateText(ctx, track.artist, metaMaxW), metaX, thumbY + 48);
+  ctx.font = `500 ${Math.round(23 * scaleFactor)}px ${SANS_STACK}`;
+  ctx.fillText(truncateText(ctx, track.artist, metaMaxW), metaX, thumbY + Math.round(48 * scaleFactor));
   ctx.restore();
 
-    drawOhmWordmark(ctx, width - padX, thumbY + 56, 33, '#8a9094', true, palette.accent);
+    drawOhmWordmark(ctx, width - padX, thumbY + Math.round(56 * scaleFactor), Math.round(33 * scaleFactor), '#8a9094', true, palette.accent);
   } finally {
     ctx.restore();
   }

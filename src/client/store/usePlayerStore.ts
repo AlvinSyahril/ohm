@@ -150,6 +150,8 @@ export type SleepMode = 'off' | 'track_end' | 'timer';
 export interface StreamMeta {
   videoId: string;
   format: string;
+  codec?: string;
+  sampleRate?: number;
   bitrate?: number;
   clientUsed?: string;
 }

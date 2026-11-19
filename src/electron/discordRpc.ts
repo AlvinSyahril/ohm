@@ -67,6 +67,7 @@ export class DiscordRpcClient {
   private latestTrack: DiscordPresencePayload['track'] = null;
   private incomingBuffer = Buffer.alloc(0);
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectGen = 0;
 
   public getStatus(): DiscordRpcConnectionStatus {
     if (!this.enabled) return 'disabled';
@@ -78,18 +79,23 @@ export class DiscordRpcClient {
     this.enabled = Boolean(payload.enabled);
     const nextClientId = (payload.clientId || DEFAULT_CLIENT_ID || '').trim();
 
-    if (nextClientId !== this.activeClientId && this.socket) {
-      this.destroySocket();
+    if (nextClientId !== this.activeClientId) {
+      this.connectGen += 1;
+      if (this.socket) {
+        this.destroySocket();
+      }
     }
     this.activeClientId = nextClientId;
     this.latestTrack = payload.track;
 
     if (!this.enabled) {
+      this.connectGen += 1;
       await this.clearAndDisconnect();
       return 'disabled';
     }
 
     if (!this.activeClientId) {
+      this.connectGen += 1;
       this.destroySocket();
       return 'needs_client_id';
     }
@@ -106,6 +112,7 @@ export class DiscordRpcClient {
   }
 
   public async clearAndDisconnect(): Promise<void> {
+    this.connectGen += 1;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -145,15 +152,21 @@ export class DiscordRpcClient {
   private async connect(): Promise<void> {
     if (this.connecting || !this.activeClientId) return;
     this.connecting = true;
+    const gen = this.connectGen;
+    const clientId = this.activeClientId;
 
     for (let i = 0; i <= 9; i += 1) {
-      if (!this.enabled) {
+      if (!this.enabled || gen !== this.connectGen || this.activeClientId !== clientId) {
         this.connecting = false;
         return;
       }
-      const connected = await this.tryConnectPipe(getIpcPath(i), this.activeClientId);
+      const connected = await this.tryConnectPipe(getIpcPath(i), clientId);
       if (connected) {
         this.connecting = false;
+        if (!this.enabled || gen !== this.connectGen || this.activeClientId !== clientId) {
+          this.destroySocket();
+          return;
+        }
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = null;
@@ -163,7 +176,9 @@ export class DiscordRpcClient {
     }
 
     this.connecting = false;
-    this.scheduleReconnect();
+    if (this.enabled && gen === this.connectGen && this.activeClientId === clientId) {
+      this.scheduleReconnect();
+    }
   }
 
   private scheduleReconnect(): void {
@@ -186,11 +201,15 @@ export class DiscordRpcClient {
         if (settled) return;
         settled = true;
         if (!ok) {
-          try {
-            sock.removeAllListeners();
-            sock.destroy();
-          } catch {
-            // Ignore cleanup errors
+          if (this.socket === sock) {
+            this.destroySocket();
+          } else {
+            try {
+              sock.removeAllListeners();
+              sock.destroy();
+            } catch {
+              // Ignore cleanup errors
+            }
           }
         }
         resolve(ok);
@@ -200,7 +219,6 @@ export class DiscordRpcClient {
 
       sock.once('error', () => {
         clearTimeout(timeout);
-        if (this.socket === sock) this.destroySocket();
         finish(false);
       });
 
@@ -209,14 +227,25 @@ export class DiscordRpcClient {
         this.incomingBuffer = Buffer.alloc(0);
 
         sock.on('data', (chunk) => {
-          this.handleData(chunk, () => {
-            clearTimeout(timeout);
-            finish(true);
-          });
+          this.handleData(
+            chunk,
+            () => {
+              clearTimeout(timeout);
+              finish(true);
+            },
+            () => {
+              clearTimeout(timeout);
+              finish(false);
+              this.scheduleReconnect();
+            }
+          );
         });
 
         sock.on('close', () => {
-          if (this.socket === sock) {
+          clearTimeout(timeout);
+          const wasCurrent = this.socket === sock;
+          finish(false);
+          if (wasCurrent) {
             this.destroySocket();
             this.scheduleReconnect();
           }
@@ -226,14 +255,13 @@ export class DiscordRpcClient {
           sock.write(encodeFrame(OP_HANDSHAKE, { v: 1, client_id: clientId }));
         } catch {
           clearTimeout(timeout);
-          this.destroySocket();
           finish(false);
         }
       });
     });
   }
 
-  private handleData(chunk: Buffer, onReady: () => void): void {
+  private handleData(chunk: Buffer, onReady: () => void, onClose: () => void): void {
     this.incomingBuffer = Buffer.concat([this.incomingBuffer, chunk]);
 
     while (this.incomingBuffer.length >= 8) {
@@ -246,6 +274,7 @@ export class DiscordRpcClient {
 
       if (op === OP_CLOSE) {
         this.destroySocket();
+        onClose();
         return;
       }
 

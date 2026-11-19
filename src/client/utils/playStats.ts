@@ -148,8 +148,8 @@ export function computeReceiptSummary(options: {
 
   let isFallbackSample = false;
 
-  // Gracefully seed from local history/favorites if play log is still sparse
-  if (byTrack.size < 3) {
+  // Gracefully seed from local history/favorites only when the play log is empty for this period
+  if (filtered.length === 0) {
     const seedPool: Track[] = [
       ...(currentTrack ? [currentTrack] : []),
       ...history,
@@ -173,7 +173,7 @@ export function computeReceiptSummary(options: {
       byArtist.set(artistKey, (byArtist.get(artistKey) ?? 0) + 1);
       if (byTrack.size >= 5) break;
     }
-    if (filtered.length === 0 && byTrack.size > 0) {
+    if (byTrack.size > 0) {
       isFallbackSample = true;
     }
   }
@@ -192,10 +192,9 @@ export function computeReceiptSummary(options: {
 
   const rankedArtists = Array.from(byArtist.entries()).sort((a, b) => b[1] - a[1]);
   const topArtist = rankedArtists[0]?.[0] ?? currentTrack?.artist ?? 'Ohm Listener';
-  const totalPlays = Math.max(
-    filtered.length,
-    rankedTracks.reduce((sum, t) => sum + t.plays, 0)
-  );
+  const totalPlays = isFallbackSample
+    ? rankedTracks.reduce((sum, t) => sum + t.plays, 0)
+    : filtered.length;
 
   return {
     periodLabel: period === 'week' ? 'THIS WEEK' : 'ALL TIME',

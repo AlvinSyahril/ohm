@@ -244,7 +244,7 @@ export const LyricsPanel: React.FC = () => {
     const recIdx = bestPartCursor % recommendations.length;
     const rec = recommendations[recIdx];
     setSelectedIndices(rec.indices);
-    setBestPartCursor((recIdx + 1) % recommendations.length);
+    setBestPartCursor((c) => c + 1);
     const anchor = rec.indices[0];
     if (typeof anchor === 'number') {
       requestAnimationFrame(() => {
@@ -269,18 +269,21 @@ export const LyricsPanel: React.FC = () => {
       if (prev.includes(index)) {
         const remaining = prev.filter((i) => i !== index);
         if (remaining.length <= 1) return remaining;
-        // Keep contiguous if user deselected a middle line
-        const isEdge = index === prev[0] || index === prev[prev.length - 1];
-        return isEdge ? remaining : [index];
+        // Keep contiguous if user deselected a middle line by keeping the larger remaining side
+        const idxPos = prev.indexOf(index);
+        if (idxPos === 0 || idxPos === prev.length - 1) return remaining;
+        const before = prev.slice(0, idxPos);
+        const after = prev.slice(idxPos + 1);
+        return before.length >= after.length ? before : after;
       }
       if (prev.length === 0) return [index];
       const min = prev[0];
       const max = prev[prev.length - 1];
-      if (isAdjacentAcrossEmpty(index, min)) {
+      if (index < min && isAdjacentAcrossEmpty(index, min)) {
         const next = [index, ...prev];
         return next.length > 4 ? next.slice(0, 4) : next;
       }
-      if (isAdjacentAcrossEmpty(index, max)) {
+      if (index > max && isAdjacentAcrossEmpty(index, max)) {
         const next = [...prev, index];
         return next.length > 4 ? next.slice(next.length - 4) : next;
       }

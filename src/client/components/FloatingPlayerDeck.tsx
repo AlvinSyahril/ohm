@@ -219,6 +219,7 @@ const AudioTuningPopover: React.FC<{
     sleepEndsAt,
     sleepPresetMinutes,
     setSleepTimer,
+    streamMeta,
   } = usePlayerStore(
     useShallow((s) => ({
       crossfadeSeconds: s.crossfadeSeconds,
@@ -233,6 +234,7 @@ const AudioTuningPopover: React.FC<{
       sleepEndsAt: s.sleepEndsAt,
       sleepPresetMinutes: s.sleepPresetMinutes,
       setSleepTimer: s.setSleepTimer,
+      streamMeta: s.streamMeta,
     }))
   );
 
@@ -263,6 +265,26 @@ const AudioTuningPopover: React.FC<{
     setLoudnessNormalization(false);
     setSleepTimer('off');
   };
+
+  const isPureSignal =
+    !loudnessNormalization &&
+    eqBands.low === 0 &&
+    eqBands.mid === 0 &&
+    eqBands.high === 0;
+
+  const codecLabel =
+    streamMeta?.codec?.toUpperCase() ||
+    (streamMeta?.format?.includes('webm')
+      ? 'OPUS'
+      : streamMeta?.format?.includes('mp4')
+      ? 'AAC'
+      : null);
+  const bitrateLabel = streamMeta?.bitrate
+    ? `${Math.round(streamMeta.bitrate / 1000)} kbps`
+    : null;
+  const sampleRateHz = streamMeta?.sampleRate ?? audioEngine.getSampleRate();
+  const sampleRateLabel = sampleRateHz ? `${(sampleRateHz / 1000).toFixed(sampleRateHz % 1000 === 0 ? 0 : 1)} kHz` : null;
+  const streamReadout = [codecLabel, bitrateLabel, sampleRateLabel].filter(Boolean).join(' · ');
 
   const presetKeys: Exclude<EqPresetId, 'custom'>[] = ['flat', 'bass', 'vocal', 'night'];
   const bandKeys: { key: keyof EqBands; label: string }[] = [
@@ -305,6 +327,25 @@ const AudioTuningPopover: React.FC<{
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+      </div>
+
+      {/* Live Signal & Codec Readout */}
+      <div className="px-2.5 py-1.5 rounded-lg bg-base/75 border border-white/[0.05] flex items-center justify-between gap-2 text-[10px] font-mono tabular-nums">
+        <span className="text-ink-3 truncate">
+          {streamReadout || 'Waiting for stream'}
+        </span>
+        <span
+          className={`shrink-0 font-semibold ${
+            isPureSignal ? 'text-accent' : 'text-ink-2'
+          }`}
+          title={
+            isPureSignal
+              ? 'Flat EQ & Normalizer off — audio bypasses DSP filters'
+              : 'EQ or Loudness Normalization active'
+          }
+        >
+          {isPureSignal ? 'PURE PATH' : 'DSP ACTIVE'}
+        </span>
       </div>
 
       {/* Equalizer */}

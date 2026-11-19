@@ -226,25 +226,55 @@ app.get('/api/artwork', async (req: Request, res: Response) => {
     });
 
     if (!upstream.ok) {
+      await upstream.body?.cancel().catch(() => {});
       return res.status(502).json({ error: 'Failed to fetch artwork' });
     }
 
-    const contentType = upstream.headers.get('content-type') || '';
-    if (!contentType.toLowerCase().startsWith('image/')) {
-      return res.status(415).json({ error: 'Upstream resource is not an image' });
+    const rawContentType = upstream.headers.get('content-type') || '';
+    const mimeType = rawContentType.split(';')[0].trim().toLowerCase();
+    const ALLOWED_RASTER_MIMES = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'image/avif',
+    ]);
+    if (!ALLOWED_RASTER_MIMES.has(mimeType)) {
+      await upstream.body?.cancel().catch(() => {});
+      return res.status(415).json({ error: 'Upstream resource is not a supported raster image' });
     }
 
     const contentLength = Number(upstream.headers.get('content-length') || 0);
     if (contentLength > ARTWORK_MAX_BYTES) {
+      await upstream.body?.cancel().catch(() => {});
       return res.status(413).json({ error: 'Artwork exceeds size limit' });
     }
 
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    if (buf.byteLength > ARTWORK_MAX_BYTES) {
-      return res.status(413).json({ error: 'Artwork exceeds size limit' });
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    if (upstream.body) {
+      const reader = upstream.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          totalBytes += value.byteLength;
+          if (totalBytes > ARTWORK_MAX_BYTES) {
+            await reader.cancel().catch(() => {});
+            return res.status(413).json({ error: 'Artwork exceeds size limit' });
+          }
+          chunks.push(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
     }
 
-    res.setHeader('Content-Type', contentType.split(';')[0].trim());
+    const buf = Buffer.concat(chunks, totalBytes);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'public, max-age=86400');
     return res.send(buf);
   } catch (err) {

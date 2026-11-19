@@ -3,7 +3,9 @@ import {
   drawFilmGrain,
   drawOhmWordmark,
   drawRoundedRectPath,
+  drawStudioBackdrop,
   type LyricCardAspect,
+  prepareCardFrame,
   truncateText,
 } from './lyricCardRenderer';
 import {
@@ -26,32 +28,6 @@ const SANS_STACK = 'Inter, "Helvetica Neue", "Segoe UI", Arial, sans-serif';
 const MONO_STACK = '"JetBrains Mono", "SFMono-Regular", ui-monospace, Consolas, monospace';
 const EMERALD = '#2eb872';
 
-function drawReceiptBackdrop(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  theme: ReceiptTheme
-) {
-  if (theme === 'thermal') {
-    const grad = ctx.createLinearGradient(0, 0, w, h);
-    grad.addColorStop(0, '#e5e1d8');
-    grad.addColorStop(1, '#dbd6cb');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-    drawFilmGrain(ctx, w, h, 0.024);
-    return;
-  }
-
-  ctx.fillStyle = '#111312';
-  ctx.fillRect(0, 0, w, h);
-  const glow = ctx.createRadialGradient(w * 0.28, h * 0.24, 20, w * 0.28, h * 0.24, Math.max(w, h) * 0.65);
-  glow.addColorStop(0, 'rgba(46, 184, 114, 0.14)');
-  glow.addColorStop(1, 'rgba(17, 19, 18, 0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, w, h);
-  drawFilmGrain(ctx, w, h, 0.022);
-}
-
 export function renderSoundReceipt(options: RenderSoundReceiptOptions): void {
   const { canvas, summary, theme, aspect, roundedCorners = true } = options;
   const { width: canvasW, height: canvasH } = CARD_DIMENSIONS[aspect];
@@ -61,35 +37,22 @@ export function renderSoundReceipt(options: RenderSoundReceiptOptions): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  let cardX = 0;
-  let cardY = 0;
-  let cardW = canvasW;
-  let cardH = canvasH;
-  const isStoryFloating = roundedCorners && aspect === '9:16';
-  const cardRadius = roundedCorners ? (isStoryFloating ? 40 : 56) : 0;
-
-  if (isStoryFloating) {
-    drawReceiptBackdrop(ctx, canvasW, canvasH, theme);
-    cardW = Math.round(canvasW * 0.74);
-    cardH = Math.round(cardW * 1.25);
-    cardX = Math.round((canvasW - cardW) / 2);
-    cardY = Math.round((canvasH - cardH) / 2);
-
-    ctx.save();
-    ctx.shadowColor = theme === 'thermal' ? 'rgba(20, 18, 15, 0.16)' : 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = theme === 'thermal' ? 44 : 56;
-    ctx.shadowOffsetY = 18;
-    ctx.fillStyle = theme === 'thermal' ? '#f2f0eb' : '#0c0e0d';
-    drawRoundedRectPath(ctx, cardX, cardY, cardW, cardH, cardRadius);
-    ctx.fill();
-    ctx.restore();
-  } else {
-    ctx.clearRect(0, 0, canvasW, canvasH);
-  }
+  const { cardX, cardY, cardW, cardH, cardRadius, scaleFactor: scale } = prepareCardFrame(
+    ctx,
+    canvasW,
+    canvasH,
+    aspect,
+    roundedCorners,
+    theme === 'thermal',
+    () =>
+      drawStudioBackdrop(ctx, canvasW, canvasH, {
+        variant: theme === 'thermal' ? 'paper' : 'obsidian',
+        glowColor: 'rgba(46, 184, 114, 0.14)',
+      })
+  );
 
   const width = cardW;
   const height = cardH;
-  const scale = width / 1080;
   const padX = Math.round(88 * scale);
   const padY = Math.round((aspect === '1:1' ? 76 : 92) * scale);
   const contentW = width - padX * 2;

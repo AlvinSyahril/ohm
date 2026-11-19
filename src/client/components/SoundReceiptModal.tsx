@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
 import { Check, Copy, Download, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { usePlayerStore } from '../store/usePlayerStore';
+import { useCanvasExport, useModalEscapeFocus } from '../hooks/useCanvasExport';
 import { EASE_OUT } from '../utils/motion';
 import { CARD_DIMENSIONS, type LyricCardAspect } from '../utils/lyricCardRenderer';
 import { computeReceiptSummary, type ReceiptPeriod } from '../utils/playStats';
@@ -25,15 +26,6 @@ const ASPECTS: Array<{ id: LyricCardAspect; label: string }> = [
   { id: '9:16', label: '9:16 Story' },
 ];
 
-function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('Failed to encode PNG'));
-    }, 'image/png');
-  });
-}
-
 export const SoundReceiptModal: React.FC = () => {
   const { open, setOpen, playEvents, history, favorites, currentTrack } = usePlayerStore(
     useShallow((s) => ({
@@ -50,8 +42,6 @@ export const SoundReceiptModal: React.FC = () => {
   const [period, setPeriod] = useState<ReceiptPeriod>('week');
   const [aspect, setAspect] = useState<LyricCardAspect>('4:5');
   const [roundedCorners, setRoundedCorners] = useState(true);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -69,20 +59,17 @@ export const SoundReceiptModal: React.FC = () => {
     [period, playEvents, history, favorites, currentTrack]
   );
 
-  useEffect(() => {
-    if (!open) return;
-    requestAnimationFrame(() => closeRef.current?.focus());
+  const closeModal = useCallback(() => setOpen(false), [setOpen]);
+  useModalEscapeFocus(open, closeModal, closeRef);
 
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        setOpen(false);
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, setOpen]);
+  const getFilename = useCallback(
+    () => `Ohm - Sound Receipt (${period === 'week' ? 'This Week' : 'All Time'}).png`,
+    [period]
+  );
+  const { statusMessage, copied, handleCopy, handleDownload } = useCanvasExport(
+    canvasRef,
+    getFilename
+  );
 
   useEffect(() => {
     if (!open || !canvasRef.current) return;
@@ -99,48 +86,6 @@ export const SoundReceiptModal: React.FC = () => {
       transition: { duration: 0.24, ease: EASE_OUT },
     });
   }, [open, summary, theme, aspect, roundedCorners, previewControls]);
-
-  const showTempStatus = (msg: string) => {
-    setStatusMessage(msg);
-    window.setTimeout(() => {
-      setStatusMessage((prev) => (prev === msg ? null : prev));
-    }, 2400);
-  };
-
-  const handleCopy = async () => {
-    if (!canvasRef.current) return;
-    try {
-      const blob = await canvasToPngBlob(canvasRef.current);
-      if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
-        showTempStatus('Clipboard unavailable here — use Download PNG');
-        return;
-      }
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      setCopied(true);
-      showTempStatus('Copied PNG to clipboard');
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      showTempStatus('Clipboard blocked — use Download PNG');
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!canvasRef.current) return;
-    try {
-      const blob = await canvasToPngBlob(canvasRef.current);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Ohm - Sound Receipt (${period === 'week' ? 'This Week' : 'All Time'}).png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      showTempStatus('Saved PNG to downloads');
-    } catch {
-      showTempStatus('Failed to export PNG');
-    }
-  };
 
   const dims = CARD_DIMENSIONS[aspect];
 
