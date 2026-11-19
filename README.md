@@ -1,29 +1,45 @@
-# Ohm
+<div align="center">
+  <img src="public/ohm-icon.svg" alt="Ohm logo" width="76" height="76" />
+  <h1>Ohm</h1>
+  <p><strong>A quiet, ad-free desktop music player for Windows.</strong></p>
+  <p>Clean streaming, synced lyrics, custom sound tuning, Discord Rich Presence, and built-in lyric &amp; receipt card exports.</p>
 
-**Ohm** is a quiet, ad-free desktop music player I built because most streaming apps feel bloated.
-
-It plays clean audio with dual-deck crossfading, a 3-band EQ, loudness normalization, and synced lyrics plus built-in **Lyric Card** and **Sound Receipt** exporters when you want to share a line without taking a messy screenshot.
-
----
-
-## Features
-
-- **Clean streaming & discovery:** Search tracks, albums, and artists, browse trending explore feeds, and keep listening with Smart Radio autoplay queues.
-- **Audio tuning:** Dual-deck crossfade (`3s` / `6s`), Balanced / Warm Bass / Clear Vocals / Late Night / Custom 3-band EQ, loudness normalization, and a gradual sleep timer.
-- **Synced lyrics & Stage view:** Click any synced line to jump straight there, or switch into **Share lyric** mode with one-tap **Best part** hook detection.
-- **Lyric Moment Card Studio:** Export `4:5 Post`, `1:1 Square`, or `9:16 Story` PNGs in **Cover Palette**, **Obsidian Matte**, or **Editorial Paper** (with **Match album vibe** palette extraction).
-- **Your Sound Receipt:** 100% local listening stats (`This Week` / `All Time`) exported as **Thermal Receipt** or **Obsidian Studio** PNG cards.
-- **Desktop integration:** Windows system tray playback controls, in-app update checks, and optional **Discord Rich Presence** (`Listening to Ohm`).
-
----
-
-## Download (Windows)
-
-Download the latest Windows installer (`Ohm-Setup-*.exe`) directly from **[nexorastudio.my.id/apps/ohm](https://www.nexorastudio.my.id/apps/ohm)** (or grab it from the [GitHub Releases](https://github.com/AlvinSyahril/ohm/releases) mirror).
+  <p>
+    <a href="https://www.nexorastudio.my.id/apps/ohm">
+      <img src="https://img.shields.io/badge/Download-Windows%20(.exe)-2eb872?style=for-the-badge" alt="Download for Windows" />
+    </a>
+    <a href="https://github.com/AlvinSyahril/ohm/releases">
+      <img src="https://img.shields.io/badge/GitHub-Releases-181b19?style=for-the-badge" alt="GitHub Releases" />
+    </a>
+  </p>
+</div>
 
 ---
 
-## Development
+## Why Ohm
+
+Most music apps feel loud, cluttered, and stuffed with feeds you never asked for. **Ohm** strips it back to what actually matters when you put headphones on: fast search, smooth audio transitions, readable synced lyrics, and a clean way to share lines you care about without taking messy screenshots.
+
+## Highlights
+
+- **Zero-clutter streaming:** Search tracks, albums, and artists, explore trending releases, and keep listening with Smart Radio autoplay queues.
+- **Built-in sound tuning:** Dual-deck crossfading (`3s` / `6s`), EQ presets (*Balanced*, *Warm Bass*, *Clear Vocals*, *Late Night*, or *Custom*), loudness normalization, and a gradual sleep timer.
+- **Stage view &amp; Synced lyrics:** Click any line to jump straight to that moment, or tap **Share lyric** with one-click **Best part** chorus detection.
+- **Lyric Moment Card Studio:** Export clean `4:5 Post`, `1:1 Square`, or `9:16 Story` PNGs in **Cover Palette**, **Obsidian Matte**, or **Editorial Paper** tuned to the album artwork.
+- **Your Sound Receipt:** Local listening stats (*This Week* / *All Time*) turned into **Thermal Receipt** or **Obsidian Studio** cards ready for Instagram Stories.
+- **Desktop native:** Windows system tray controls, in-app updates, and optional **Discord Rich Presence** (`Listening to Ohm`).
+
+---
+
+## Install (Windows)
+
+1. Download the latest `Ohm-Setup-*.exe` from **[nexorastudio.my.id/apps/ohm](https://www.nexorastudio.my.id/apps/ohm)** (or the [GitHub Releases](https://github.com/AlvinSyahril/ohm/releases) mirror).
+2. Run the installer and open **Ohm**.
+
+---
+
+<details>
+<summary><strong>Build from source (for developers)</strong></summary>
 
 Requires **Node.js 20+** and **pnpm**.
 
@@ -42,8 +58,8 @@ pnpm run electron:start
 pnpm run dist:win
 ```
 
----
+</details>
 
-## License & Author
+---
 
 Built by [Alvin Syahril (@vinnssmokee)](https://www.instagram.com/vinnssmokee).
