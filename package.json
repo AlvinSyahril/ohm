@@ -2,16 +2,64 @@
   "name": "ohm-player",
   "version": "0.1.0",
   "private": true,
-  "description": "Ohm - Lean web-first streaming music player with dark Swiss minimalism and neo-brutalist aesthetics",
+  "description": "Ohm - Lean desktop and web streaming music player with dark Swiss minimalism",
   "type": "module",
+  "main": "dist/electron/main.js",
+  "author": {
+    "name": "Alvin Syahril (@vinnssmokee)",
+    "url": "https://www.instagram.com/vinnssmokee"
+  },
   "scripts": {
     "dev": "vite",
     "server:dev": "tsx watch src/server/index.ts",
     "server:build": "tsc -p tsconfig.server.json",
     "server:start": "node dist/server/index.js",
+    "icons": "node scripts/generate-icons.mjs",
+    "electron:build": "tsc -p tsconfig.electron.json && node scripts/copy-preload.mjs",
+    "electron:start": "pnpm run build && pnpm run server:build && pnpm run electron:build && electron .",
+    "dist:dir": "pnpm run icons && pnpm run build && pnpm run server:build && pnpm run electron:build && electron-builder --win --dir",
+    "dist:win": "pnpm run icons && pnpm run build && pnpm run server:build && pnpm run electron:build && electron-builder --win nsis",
     "build": "vite build",
     "preview": "vite preview",
     "test:resolver": "tsx src/server/test-resolver.ts"
+  },
+  "build": {
+    "appId": "com.alvinsyahril.ohm",
+    "productName": "Ohm",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "build/icon.ico",
+      "build/icon.png",
+      "build/tray.png",
+      "package.json",
+      "!**/*.map"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Ohm-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Ohm",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
+    }
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.0.9",
@@ -27,12 +75,16 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^22.20.5",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^45.3.1",
+    "electron-builder": "^26.18.0",
+    "png-to-ico": "^3.0.2",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^6.2.0"

@@ -1,599 +1,346 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Play,
-  Pause,
-  Plus,
-  Heart,
-  Check,
-  MoreVertical,
-  Radio,
-  Disc,
-} from 'lucide-react';
-import { Track, Playlist, usePlayerStore } from '../store/usePlayerStore';
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { Play, Pause, MoreHorizontal } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
+import { Track, usePlayerStore } from '../store/usePlayerStore';
+import { primaryArtist } from '../utils/catalog';
+import { ArtistLinks } from './ArtistLinks';
+import { HeartButton } from './HeartButton';
+import { MenuCoords, TrackContextMenu } from './TrackContextMenu';
+import { rowDelay, EASE_OUT } from '../utils/motion';
 
 export const formatDuration = (seconds?: number): string => {
-  if (!seconds || isNaN(seconds)) return '0:00';
+  if (!seconds || isNaN(seconds) || !isFinite(seconds)) return '0:00';
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 };
 
-export const upgradeThumbnail = (url?: string, videoId?: string): string => {
+export const formatTrackDuration = (seconds?: number): string =>
+  seconds && isFinite(seconds) && seconds > 0 ? formatDuration(seconds) : '—';
+
+const YT_IMG_RE =
+  /^https?:\/\/(?:i|img)\.yt(?:img)?\.com\/(?:vi|vi_webp)\/([A-Za-z0-9_-]{6,})\/(?:maxresdefault|sddefault|hqdefault|mqdefault|default)\.(?:jpg|webp)/i;
+
+export type ArtworkSize = 'xs' | 'sm' | 'md' | 'lg';
+
+const ARTWORK_PX: Record<ArtworkSize, number> = {
+  xs: 120,
+  sm: 240,
+  md: 544,
+  lg: 1200,
+};
+
+const resolveArtworkPx = (size: number | ArtworkSize): number =>
+  typeof size === 'number' ? size : ARTWORK_PX[size];
+
+const ytQualityForPx = (px: number): string =>
+  px >= 400 ? 'maxresdefault.jpg' : 'mqdefault.jpg';
+
+const UNCROPPED_YT_4_3_RE = /\/(?:sddefault|hqdefault)\.jpg(?:\?|$)/i;
+
+export const upgradeThumbnail = (
+  url?: string,
+  videoId?: string,
+  size: number | ArtworkSize = 1200
+): string => {
+  const px = resolveArtworkPx(size);
   if (!url) {
-    return videoId
-      ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
-      : '';
+    return videoId ? `https://i.ytimg.com/vi/${videoId}/${ytQualityForPx(px)}` : '';
   }
-  return url.replace(/=w\d+-h\d+/, '=w544-h544');
+  if (/=w\d+-h\d+/.test(url)) {
+    return url.replace(/=w\d+-h\d+/, `=w${px}-h${px}`);
+  }
+  if (/=s\d+/.test(url)) {
+    return url.replace(/=s\d+/, `=s${px}`);
+  }
+  const ytMatch = url.match(YT_IMG_RE);
+  if (ytMatch?.[1]) {
+    return `https://i.ytimg.com/vi/${ytMatch[1]}/${ytQualityForPx(px)}`;
+  }
+  return url;
 };
 
 /**
- * Bulletproof Track Artwork with multi-tier fallback:
- * 1. High-res original / upgraded URL
- * 2. mqdefault.jpg
- * 3. default.jpg
- * 4. Generative acoustic geometric vector avatar
+ * Artwork with slot-sized resolution (sm 240px for rows, md 544px for grid cards, lg 1200px for stage/heroes),
+ * layered YouTube fallbacks, and async decoding so large grids stay fast and low-RAM.
  */
 export const TrackArtwork: React.FC<{
   track: Track;
+  size?: ArtworkSize;
   className?: string;
-}> = ({ track, className = 'w-full h-full object-cover' }) => {
+}> = ({ track, size = 'sm', className = 'w-full h-full object-cover' }) => {
   const [tier, setTier] = useState<number>(0);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setTier(0);
-  }, [track.id, track.thumbnail]);
+    setLoaded(false);
+  }, [track.id, track.thumbnail, size]);
 
-  const candidateUrls = [
-    upgradeThumbnail(track.thumbnail, track.id),
-    track.id ? `https://i.ytimg.com/vi/${track.id}/mqdefault.jpg` : '',
-    track.id ? `https://i.ytimg.com/vi/${track.id}/default.jpg` : '',
+  const targetPx = ARTWORK_PX[size];
+  const ytChain =
+    targetPx >= 900
+      ? ['mqdefault.jpg', 'sddefault.jpg', 'hqdefault.jpg']
+      : ['mqdefault.jpg', 'hqdefault.jpg'];
+
+  // Preserve original ?sqp= cropped thumbnails before falling back to generic 4:3 URLs
+  const hasCroppedSqp = Boolean(track.thumbnail && track.thumbnail.includes('sqp='));
+  const rawList = [
+    upgradeThumbnail(track.thumbnail, track.id, size),
+    ...(hasCroppedSqp ? [track.thumbnail || ''] : []),
+    ...(track.id ? ytChain.map((q) => `https://i.ytimg.com/vi/${track.id}/${q}`) : []),
+    ...(!hasCroppedSqp ? [track.thumbnail || ''] : []),
   ].filter(Boolean);
+  const candidates = rawList.filter((u, idx) => rawList.indexOf(u) === idx);
 
-  const currentSrc = candidateUrls[tier];
+  const src = candidates[tier];
+  const needsLetterboxCrop =
+    !!src && UNCROPPED_YT_4_3_RE.test(src) && !src.includes('sqp=');
 
-  if (!currentSrc || tier >= candidateUrls.length) {
-    const initials = (track.title || 'M')
+  if (!src) {
+    const initials = (track.title || 'O')
       .split(' ')
       .slice(0, 2)
       .map((w) => w[0])
       .join('')
       .toUpperCase();
-
-    const seed = track.id || track.title || 'ohm';
-    const hue = (seed.charCodeAt(0) * 37 + (seed.charCodeAt(1) || 45) * 19) % 360;
-
     return (
       <div
-        className={`${className} flex flex-col items-center justify-center relative overflow-hidden select-none`}
-        style={{
-          background: `linear-gradient(135deg, hsl(${hue}, 45%, 12%), hsl(${(hue + 40) % 360}, 60%, 7%))`,
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-        }}
+        className={`${className} flex items-center justify-center bg-hover text-ink-2 text-sm font-bold select-none`}
+        aria-hidden
       >
-        <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
-          <div className="w-20 h-20 rounded-full border border-white" />
-          <div className="w-12 h-12 rounded-full border border-white absolute" />
-        </div>
-        <Disc className="w-5 h-5 text-white/40 mb-1" />
-        <span className="font-display font-bold text-xs text-white/80 tracking-wider">
-          {initials}
-        </span>
+        {initials}
       </div>
     );
   }
 
+  const handleReady = (el: HTMLImageElement) => {
+    // YouTube returns a 120x90 grey stub when maxresdefault/sddefault is missing for older uploads
+    if (
+      src.includes('i.ytimg.com') &&
+      el.naturalWidth === 120 &&
+      el.naturalHeight === 90 &&
+      tier < candidates.length - 1
+    ) {
+      setLoaded(false);
+      setTier((t) => t + 1);
+      return;
+    }
+    setLoaded(true);
+  };
+
   return (
     <img
-      src={currentSrc}
-      alt={track.title}
+      key={src}
+      ref={(el) => {
+        // Cached images can finish before React attaches onLoad
+        if (el && el.complete && el.naturalWidth > 0) handleReady(el);
+      }}
+      src={src}
+      alt=""
       referrerPolicy="no-referrer"
       loading="lazy"
+      decoding="async"
+      onLoad={(e) => handleReady(e.currentTarget)}
       onError={() => {
-        setTier((prev) => prev + 1);
+        setLoaded(false);
+        setTier((t) => t + 1);
       }}
-      className={className}
+      className={`${className} transition-opacity duration-500 ${
+        needsLetterboxCrop ? 'scale-[1.34]' : ''
+      } ${loaded ? 'opacity-100' : 'opacity-0'}`}
     />
   );
 };
 
-// Compact Track Row for YouTube Music style 4-column "Quick Picks" (Pilihan Cepat)
-interface CompactTrackRowProps {
+/** Three-bar playing indicator. Settles into a static glyph when paused. */
+export const PlayingBars: React.FC<{ active: boolean; className?: string }> = ({
+  active,
+  className = 'h-3.5 w-3.5',
+}) => (
+  <div className={`flex items-end gap-[2px] ${className}`} aria-hidden>
+    <span className={`w-[3px] bg-accent ${active ? 'eq-bar-1' : 'h-[40%]'}`} />
+    <span className={`w-[3px] bg-accent ${active ? 'eq-bar-2' : 'h-[80%]'}`} />
+    <span className={`w-[3px] bg-accent ${active ? 'eq-bar-3' : 'h-[55%]'}`} />
+  </div>
+);
+
+interface TrackRowProps {
   track: Track;
   index: number;
   contextQueue?: Track[];
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }
 
-export const CompactTrackRow: React.FC<CompactTrackRowProps> = ({
+export const TrackRow: React.FC<TrackRowProps> = ({
   track,
   index,
   contextQueue,
+  onMoveUp,
+  onMoveDown,
 }) => {
   const {
     currentTrack,
     isPlaying,
     playTrack,
-    startRadio,
     togglePlay,
-    addToQueue,
-    queue,
-    toggleFavorite,
-    favorites,
-    playlists,
-    addTrackToPlaylist,
-  } = usePlayerStore();
+    openCollection,
+  } = usePlayerStore(
+    useShallow((s) => ({
+      currentTrack: s.currentTrack,
+      isPlaying: s.isPlaying,
+      playTrack: s.playTrack,
+      togglePlay: s.togglePlay,
+      openCollection: s.openCollection,
+    }))
+  );
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuCoords, setMenuCoords] = useState<MenuCoords | null>(null);
 
   const isCurrent = currentTrack?.id === track.id;
-  const isCurrentlyPlaying = isCurrent && isPlaying;
-  const inQueue = queue.some((t) => t.id === track.id);
-  const isFav = favorites.some((t) => t.id === track.id);
+  const menuOpen = menuCoords !== null;
 
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    if (menuOpen) {
-      document.addEventListener('mousedown', handleOutsideClick);
-    }
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [menuOpen]);
-
-  const handleRowClick = () => {
+  const activate = () => {
     if (isCurrent) {
       togglePlay();
     } else {
-      const upcoming = contextQueue
-        ? contextQueue.filter((_, idx) => idx !== index)
-        : undefined;
-      playTrack(track, upcoming);
+      playTrack(track, contextQueue ? contextQueue.slice(index + 1) : undefined);
     }
   };
 
+  const toggleMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (menuOpen) {
+      setMenuCoords(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuCoords({ x: rect.right, y: rect.bottom + 4, alignRight: true });
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuCoords({ x: e.clientX, y: e.clientY });
+  };
+
+  const reveal = menuOpen
+    ? 'opacity-100'
+    : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100';
+
   return (
     <motion.div
-      onClick={handleRowClick}
-      whileHover={{ scale: 1.008 }}
-      whileTap={{ scale: 0.992 }}
-      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-      className={`group relative flex items-center justify-between p-2 rounded-xl transition-colors cursor-pointer select-none ${
-        isCurrent
-          ? 'bg-[#181d26] border border-[#c8ff00]/60'
-          : 'bg-[#0e1116]/80 hover:bg-[#151922] border border-white/[0.05] hover:border-white/[0.12]'
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: EASE_OUT, delay: rowDelay(index) }}
+      onClick={activate}
+      onContextMenu={handleContextMenu}
+      className={`group grid grid-cols-[2rem_minmax(0,1fr)_auto] md:grid-cols-[2rem_minmax(0,3fr)_minmax(0,2fr)_auto] items-center gap-4 h-14 px-4 rounded-md hover:bg-white/[0.07] focus-within:bg-white/[0.07] transition-colors select-none cursor-pointer ${
+        menuOpen ? 'bg-white/[0.07]' : ''
       }`}
     >
-      {/* Left: Thumbnail & Equalizer / Play icon */}
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className="relative w-12 h-12 rounded-lg bg-[#090a0c] overflow-hidden shrink-0 border border-white/[0.06]">
-          <TrackArtwork track={track} className="w-full h-full object-cover" />
-
-          {/* Hover Play Button Overlay */}
-          <div
-            className={`absolute inset-0 bg-black/60 flex items-center justify-center transition-opacity ${
-              isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}
-          >
-            {isCurrentlyPlaying ? (
-              <div className="flex items-end gap-[2px] h-3 w-3.5">
-                <span className="w-[2px] bg-[#c8ff00] eq-bar-1" />
-                <span className="w-[2px] bg-[#c8ff00] eq-bar-2" />
-                <span className="w-[2px] bg-[#c8ff00] eq-bar-3" />
-              </div>
+      {/* Index / state */}
+      <div className="flex items-center justify-center text-sm text-ink-2 tabular-nums">
+        {isCurrent ? (
+          <>
+            <span className="group-hover:hidden">
+              <PlayingBars active={isPlaying} />
+            </span>
+            {isPlaying ? (
+              <Pause className="w-4 h-4 text-ink fill-current hidden group-hover:block" />
             ) : (
-              <Play className="w-4 h-4 text-[#c8ff00] fill-current ml-0.5" />
+              <Play className="w-4 h-4 text-ink fill-current hidden group-hover:block" />
             )}
-          </div>
-        </div>
+          </>
+        ) : (
+          <>
+            <span className="group-hover:hidden">{index + 1}</span>
+            <Play className="w-4 h-4 text-ink fill-current hidden group-hover:block" />
+          </>
+        )}
+      </div>
 
-        {/* Track Title and Artist */}
-        <div className="min-w-0 pr-2">
-          <div
-            className={`font-display font-medium text-[13px] truncate ${
-              isCurrent ? 'text-[#c8ff00]' : 'text-zinc-100 group-hover:text-white'
+      {/* Title block */}
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-10 h-10 rounded-md overflow-hidden bg-hover shrink-0">
+          <TrackArtwork track={track} />
+        </div>
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              activate();
+            }}
+            className={`block max-w-full text-left text-[15px] font-medium truncate transition-colors focus-visible:underline ${
+              isCurrent ? 'text-accent' : 'text-ink'
             }`}
           >
             {track.title}
-          </div>
-          <div className="text-[11px] text-zinc-400 truncate mt-0.5">
-            {track.artist}
-            {track.album && (
-              <span className="text-zinc-500"> · {track.album}</span>
-            )}
+          </button>
+          <div className="text-sm text-ink-2 truncate group-hover:text-ink transition-colors">
+            <ArtistLinks
+              artist={track.artist}
+              artistId={track.artistId}
+              className="block max-w-full truncate"
+              linkClassName="hover:underline"
+            />
           </div>
         </div>
       </div>
 
-      {/* Right: Quick actions & Duration */}
-      <div className="flex items-center gap-1 shrink-0 relative" ref={menuRef}>
-        {/* Start Smart Radio Button */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            startRadio(track);
-          }}
-          title="Start Smart Radio"
-          className="w-7 h-7 rounded flex items-center justify-center text-zinc-500 hover:text-[#c8ff00] opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-        >
-          <Radio className="w-3.5 h-3.5" />
-        </button>
+      {/* Album */}
+      <div className="hidden md:block min-w-0 text-sm text-ink-2 group-hover:text-ink transition-colors">
+        {track.album ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openCollection({
+                title: track.album!,
+                kind: 'Album',
+                albumId: track.albumId,
+                artist: primaryArtist(track.artist),
+                thumbnail: track.thumbnail,
+                tracks: [],
+              });
+            }}
+            className="block max-w-full truncate text-left hover:underline"
+          >
+            {track.album}
+          </button>
+        ) : (
+          ''
+        )}
+      </div>
 
-        {/* Favorite button */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleFavorite(track);
-          }}
-          title={isFav ? 'Remove from Library' : 'Save to Library'}
-          className={`w-7 h-7 rounded flex items-center justify-center transition-colors cursor-pointer ${
-            isFav
-              ? 'text-[#c8ff00]'
-              : 'text-zinc-500 hover:text-white opacity-0 group-hover:opacity-100'
-          }`}
-        >
-          <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
-        </button>
+      {/* Actions + duration */}
+      <div className="relative flex items-center justify-end gap-1">
+        <HeartButton track={track} revealClass={reveal} />
 
-        {/* Add to Queue button */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            addToQueue(track);
-          }}
-          title={inQueue ? 'In Queue' : 'Add to Queue'}
-          className={`w-7 h-7 rounded flex items-center justify-center transition-colors cursor-pointer ${
-            inQueue
-              ? 'text-white'
-              : 'text-zinc-500 hover:text-white opacity-0 group-hover:opacity-100'
-          }`}
-        >
-          {inQueue ? <Check className="w-3.5 h-3.5 text-[#c8ff00]" /> : <Plus className="w-3.5 h-3.5" />}
-        </button>
-
-        {/* More Actions / Add to Playlist Dropdown */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenuOpen(!menuOpen);
-          }}
-          title="More Actions"
-          className="w-7 h-7 rounded flex items-center justify-center text-zinc-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-        >
-          <MoreVertical className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Duration text */}
-        <span className="font-mono text-[10px] text-zinc-500 tabular-nums px-1.5 w-10 text-right">
-          {formatDuration(track.duration)}
+        <span className="w-12 text-right text-sm text-ink-2 tabular-nums">
+          {formatTrackDuration(track.duration)}
         </span>
 
-        {/* Popover Menu with AnimatePresence */}
-        <AnimatePresence>
-          {menuOpen && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -4 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -4 }}
-              transition={{ duration: 0.12 }}
-              onClick={(e) => e.stopPropagation()}
-              className="absolute right-0 top-8 w-48 bg-[#12151d] border border-white/[0.12] rounded-xl shadow-2xl p-1.5 z-30 select-none backdrop-blur-md"
-            >
-              <button
-                onClick={() => {
-                  startRadio(track);
-                  setMenuOpen(false);
-                }}
-                className="w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 text-zinc-200 hover:text-[#c8ff00] hover:bg-white/[0.06] cursor-pointer mb-1 border-b border-white/[0.06] pb-1.5 font-medium"
-              >
-                <Radio className="w-3.5 h-3.5 text-[#c8ff00]" />
-                <span>Start Smart Radio</span>
-              </button>
+        <button
+          onClick={toggleMenu}
+          aria-label="More options"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className={`w-8 h-8 flex items-center justify-center rounded-full text-ink-2 hover:text-ink transition-colors ${reveal}`}
+        >
+          <MoreHorizontal className="w-4 h-4" />
+        </button>
 
-              <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-white/[0.06] mb-1">
-                Add to Playlist
-              </div>
-              {playlists.length === 0 ? (
-                <div className="px-2 py-1.5 text-xs text-zinc-400">
-                  No playlists yet
-                </div>
-              ) : (
-                playlists.map((pl) => {
-                  const alreadyIn = pl.tracks.some((t) => t.id === track.id);
-                  return (
-                    <button
-                      key={pl.id}
-                      onClick={() => {
-                        addTrackToPlaylist(pl.id, track);
-                        setMenuOpen(false);
-                      }}
-                      disabled={alreadyIn}
-                      className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
-                        alreadyIn
-                          ? 'text-zinc-600 cursor-default'
-                          : 'text-zinc-300 hover:text-white hover:bg-white/[0.06] cursor-pointer'
-                      }`}
-                    >
-                      <span className="truncate">{pl.name}</span>
-                      {alreadyIn && <Check className="w-3 h-3 text-[#c8ff00]" />}
-                    </button>
-                  );
-                })
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </motion.div>
-  );
-};
-
-// Carousel Track Card for "Listen Again" & "Recommended Albums"
-interface CarouselTrackCardProps {
-  track: Track;
-  subtitle?: string;
-  onPlay: () => void;
-}
-
-export const CarouselTrackCard: React.FC<CarouselTrackCardProps> = ({
-  track,
-  subtitle,
-  onPlay,
-}) => {
-  const { currentTrack, isPlaying, toggleFavorite, favorites, startRadio } = usePlayerStore();
-
-  const isCurrent = currentTrack?.id === track.id;
-  const isCurrentlyPlaying = isCurrent && isPlaying;
-  const isFav = favorites.some((t) => t.id === track.id);
-
-  return (
-    <motion.div
-      onClick={onPlay}
-      whileHover={{ y: -5, scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      className="group w-44 shrink-0 p-3 rounded-2xl bg-[#0f1218]/70 hover:bg-[#141822] border border-white/[0.05] hover:border-white/[0.14] transition-colors cursor-pointer select-none flex flex-col shadow-lg"
-    >
-      {/* Square Art */}
-      <div className="relative aspect-square w-full rounded-xl bg-[#090a0c] overflow-hidden mb-3 border border-white/[0.05]">
-        <TrackArtwork
+        <TrackContextMenu
           track={track}
-          className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-300"
+          coords={menuCoords}
+          onClose={() => setMenuCoords(null)}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
         />
-
-        {/* Hover / Active Play Button with Spring */}
-        <div
-          className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200 ${
-            isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}
-        >
-          <motion.div
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.92 }}
-            className="w-11 h-11 rounded-full bg-[#c8ff00] text-[#090a0c] flex items-center justify-center shadow-xl"
-          >
-            {isCurrentlyPlaying ? (
-              <Pause className="w-5 h-5 fill-current" />
-            ) : (
-              <Play className="w-5 h-5 fill-current ml-0.5" />
-            )}
-          </motion.div>
-        </div>
-
-        {/* Quick Top Actions: Radio & Heart */}
-        <div className="absolute top-2 right-2 flex items-center gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              startRadio(track);
-            }}
-            title="Start Smart Radio"
-            className="w-7 h-7 rounded-full flex items-center justify-center bg-black/60 text-white hover:text-[#c8ff00] backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-          >
-            <Radio className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleFavorite(track);
-            }}
-            title={isFav ? 'Remove from Library' : 'Save to Library'}
-            className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-opacity cursor-pointer ${
-              isFav
-                ? 'bg-[#c8ff00] text-[#090a0c] opacity-100'
-                : 'bg-black/60 text-white hover:text-[#c8ff00] opacity-0 group-hover:opacity-100'
-            }`}
-          >
-            <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Info */}
-      <div className="min-w-0">
-        <h4
-          className={`font-display font-semibold text-[13px] truncate ${
-            isCurrent ? 'text-[#c8ff00]' : 'text-zinc-100 group-hover:text-white'
-          }`}
-          title={track.title}
-        >
-          {track.title}
-        </h4>
-        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
-          {subtitle || track.artist}
-        </p>
-      </div>
-    </motion.div>
-  );
-};
-
-// Standard Grid Track Card
-interface TrackCardProps {
-  track: Track;
-  index: number;
-  contextQueue?: Track[];
-}
-
-export const TrackCard: React.FC<TrackCardProps> = ({
-  track,
-  index,
-  contextQueue,
-}) => {
-  const {
-    currentTrack,
-    isPlaying,
-    playTrack,
-    startRadio,
-    togglePlay,
-    addToQueue,
-    queue,
-    toggleFavorite,
-    favorites,
-  } = usePlayerStore();
-
-  const isCurrent = currentTrack?.id === track.id;
-  const isCurrentlyPlaying = isCurrent && isPlaying;
-  const inQueue = queue.some((t) => t.id === track.id);
-  const isFav = favorites.some((t) => t.id === track.id);
-
-  const handlePlayClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isCurrent) {
-      togglePlay();
-    } else {
-      const upcoming = contextQueue
-        ? contextQueue.filter((_, idx) => idx !== index)
-        : undefined;
-      playTrack(track, upcoming);
-    }
-  };
-
-  return (
-    <motion.div
-      onClick={handlePlayClick}
-      whileHover={{ y: -4, scale: 1.015 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      className={`group relative rounded-2xl p-3 cursor-pointer select-none flex flex-col justify-between transition-colors duration-200 ${
-        isCurrent
-          ? 'bg-[#151922] border border-[#c8ff00]'
-          : 'bg-[#0f1218]/80 border border-white/[0.06] hover:bg-[#141822] hover:border-white/[0.14]'
-      }`}
-    >
-      {/* Square Album Artwork */}
-      <div className="relative aspect-square w-full rounded-xl bg-[#090a0c] overflow-hidden mb-3 border border-white/[0.05]">
-        <TrackArtwork
-          track={track}
-          className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300 ease-out"
-        />
-
-        {/* Active Playing Indicator Badge */}
-        {isCurrent && (
-          <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-[#090a0c]/90 border border-white/[0.12] flex items-center gap-1.5 shadow-md">
-            <div className="flex items-end gap-[2px] h-2.5 w-3">
-              <span
-                className={`w-[2px] bg-[#c8ff00] ${
-                  isCurrentlyPlaying ? 'eq-bar-1' : 'h-1'
-                }`}
-              />
-              <span
-                className={`w-[2px] bg-[#c8ff00] ${
-                  isCurrentlyPlaying ? 'eq-bar-2' : 'h-2'
-                }`}
-              />
-              <span
-                className={`w-[2px] bg-[#c8ff00] ${
-                  isCurrentlyPlaying ? 'eq-bar-3' : 'h-1.5'
-                }`}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Quick Top-Right Hover Actions */}
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10"
-        >
-          <button
-            onClick={() => startRadio(track)}
-            title="Start Smart Radio"
-            className="w-7 h-7 rounded-full flex items-center justify-center border bg-[#090a0c]/85 border-white/[0.15] text-white hover:text-[#c8ff00] hover:border-[#c8ff00]/40 transition-colors cursor-pointer"
-          >
-            <Radio className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            onClick={() => toggleFavorite(track)}
-            title={isFav ? 'Remove from Library' : 'Save to Library'}
-            className={`w-7 h-7 rounded-full flex items-center justify-center border transition-colors cursor-pointer ${
-              isFav
-                ? 'bg-[#c8ff00] border-[#c8ff00] text-[#090a0c]'
-                : 'bg-[#090a0c]/85 border-white/[0.15] text-white hover:border-white/40'
-            }`}
-          >
-            <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
-          </button>
-
-          <button
-            onClick={() => addToQueue(track)}
-            title={inQueue ? 'In Queue' : 'Add to Queue'}
-            className={`w-7 h-7 rounded-full flex items-center justify-center border transition-colors cursor-pointer ${
-              inQueue
-                ? 'bg-white border-white text-[#090a0c]'
-                : 'bg-[#090a0c]/85 border-white/[0.15] text-white hover:border-white/40'
-            }`}
-          >
-            {inQueue ? <Check className="w-3.5 h-3.5 text-[#090a0c]" /> : <Plus className="w-3.5 h-3.5" />}
-          </button>
-        </div>
-
-        {/* Bottom-Right Play Button on Hover */}
-        <motion.button
-          onClick={handlePlayClick}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.92 }}
-          aria-label={isCurrentlyPlaying ? 'Pause' : 'Play'}
-          className={`absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[#c8ff00] text-[#090a0c] flex items-center justify-center shadow-xl transition-all duration-200 cursor-pointer ${
-            isCurrent
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0'
-          }`}
-        >
-          {isCurrentlyPlaying ? (
-            <Pause className="w-4 h-4 fill-current" />
-          ) : (
-            <Play className="w-4 h-4 fill-current ml-0.5" />
-          )}
-        </motion.button>
-      </div>
-
-      {/* Clean Typography */}
-      <div>
-        <h3
-          className={`font-display font-semibold text-[13px] tracking-tight truncate ${
-            isCurrent ? 'text-[#c8ff00]' : 'text-zinc-100 group-hover:text-white'
-          }`}
-          title={track.title}
-        >
-          {track.title}
-        </h3>
-        <div className="text-[12px] text-zinc-400 truncate mt-0.5">
-          {track.artist}
-        </div>
-
-        <div className="mt-2.5 pt-2 border-t border-white/[0.05] flex items-center justify-between gap-2 font-mono text-[10px] text-zinc-500">
-          <span className="truncate uppercase">
-            {track.album || 'Single'}
-          </span>
-          <span className="tabular-nums shrink-0 text-zinc-400">
-            {formatDuration(track.duration)}
-          </span>
-        </div>
       </div>
     </motion.div>
   );

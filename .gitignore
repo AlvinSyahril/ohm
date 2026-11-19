@@ -1,5 +1,11 @@
 node_modules
 dist
+release
 .env
+.env.*
+!.env.example
 .cache
 *.log
+.DS_Store
+Thumbs.db
+ohm-redesign.figcraft
