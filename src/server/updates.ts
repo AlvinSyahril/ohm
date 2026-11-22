@@ -90,13 +90,15 @@ export function isAllowedDownloadUrl(rawUrl: string): boolean {
     const parsed = new URL(rawUrl);
     if (parsed.protocol !== 'https:') return false;
     if (!ALLOWED_DOWNLOAD_HOSTS.has(parsed.hostname)) return false;
-    if (
-      parsed.hostname === 'github.com' &&
-      !parsed.pathname.startsWith('/AlvinSyahril/ohm/releases/')
-    ) {
-      return false;
+    if (parsed.hostname === 'github.com') {
+      return (
+        parsed.pathname.startsWith('/AlvinSyahril/ohm/releases/') &&
+        parsed.pathname.toLowerCase().endsWith('.exe')
+      );
     }
-    return parsed.pathname.toLowerCase().endsWith('.exe');
+    // GitHub's signed CDN redirects (release-assets / objects.githubusercontent.com)
+    // serve UUID paths with the .exe filename in query params, not pathname.
+    return true;
   } catch {
     return false;
   }
