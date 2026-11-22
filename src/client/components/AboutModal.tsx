@@ -17,39 +17,10 @@ import {
   isDesktopApp,
   openExternalSafe,
 } from '../lib/desktop';
+import { LATEST_RELEASE } from '../lib/changelog';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { OhmLogo } from './OhmLogo';
 import { EASE_OUT } from '../utils/motion';
-
-interface ChangelogRelease {
-  version: string;
-  label: string;
-  items: string[];
-}
-
-const APP_CHANGELOG: ChangelogRelease[] = [
-  {
-    version: '0.2.0',
-    label: 'Latest',
-    items: [
-      'Shareable Lyric Card Studio: pick 1-4 lines or use Best Part auto-detection, style with Obsidian Matte, Editorial Paper, or Cover Palette, and export crisp PNGs.',
-      'Your Sound Receipt: generate your weekly or all-time listening receipt directly from local playback stats.',
-      'Discord Rich Presence (Desktop): shows your live listening status with play/pause timestamps and optional custom app ID.',
-      'Audio quality & tuning: smart Opus/AAC stream selection, Pure Path filter bypass, live codec/bitrate readout, and Loudness Normalization.',
-      'Performance & polish: smoother Stage/Lyrics animations, chunked bundle loading, and hardened desktop/updater reliability.',
-    ],
-  },
-  {
-    version: '0.1.0',
-    label: 'First Release',
-    items: [
-      'Discover trending tracks, search with instant suggestions, and organize Songs, Albums, Artists, and Playlists.',
-      'Smooth transitions between songs, custom sound presets, and a built-in sleep timer.',
-      'Full-screen Now Playing view with live synced lyrics and easy queue reordering.',
-      'Stays handy in the Windows system tray and lets you update right inside the app.',
-    ],
-  },
-];
 
 export const AboutModal: React.FC = () => {
   const isOpen = usePlayerStore((s) => s.isAboutOpen);
@@ -367,27 +338,33 @@ export const AboutModal: React.FC = () => {
                 </section>
               )}
 
-              {/* Release changelog */}
+              {/* Release changelog (latest only; older history on GitHub) */}
               <section className="rounded-md bg-canvas/70 border border-line p-4 space-y-3">
-                <span className="block text-xs font-semibold uppercase tracking-wider text-ink-2">
-                  {"What's New"}
-                </span>
-                <div className="space-y-3">
-                  {APP_CHANGELOG.map((release) => (
-                    <div key={release.version} className="space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="px-1.5 py-0.5 text-[11px] font-medium rounded-sm bg-raised border border-line text-ink tabular-nums">
-                          v{release.version}
-                        </span>
-                        <span className="text-xs font-medium text-ink-2">{release.label}</span>
-                      </div>
-                      <ul className="space-y-1 text-xs text-ink-2 leading-relaxed list-disc pl-4">
-                        {release.items.map((item, idx) => (
-                          <li key={idx}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="block text-xs font-semibold uppercase tracking-wider text-ink-2">
+                    {"What's New"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void openExternalSafe('releases')}
+                    className="inline-flex items-center gap-1 text-[11px] text-ink-3 hover:text-ink transition-colors"
+                  >
+                    <span>All versions on GitHub</span>
+                    <ArrowUpRight className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-1.5 py-0.5 text-[11px] font-medium rounded-sm bg-raised border border-line text-ink tabular-nums">
+                      v{version}
+                    </span>
+                    <span className="text-xs font-medium text-ink-2">{LATEST_RELEASE.label}</span>
+                  </div>
+                  <ul className="space-y-1 text-xs text-ink-2 leading-relaxed list-disc pl-4">
+                    {LATEST_RELEASE.items.map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
                 </div>
               </section>
 

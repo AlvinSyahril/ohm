@@ -204,7 +204,7 @@ export const Sidebar: React.FC = () => {
               transition={{ duration: 0.22, ease: EASE_OUT }}
               className="px-2 overflow-hidden shrink-0"
             >
-              <div className="pb-2">
+              <div className="pt-1 pb-2 px-px">
                 <input
                   autoFocus
                   value={name}

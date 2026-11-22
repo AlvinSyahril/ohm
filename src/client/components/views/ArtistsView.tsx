@@ -1,11 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, Mic2, Plus } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
-import { usePlayerStore } from '../../store/usePlayerStore';
+import { Track, usePlayerStore } from '../../store/usePlayerStore';
 import { toast } from '../../store/useToastStore';
 import { GLOBAL_TRENDING_TRACKS } from '../../utils/recommendationEngine';
 import { buildArtists, primaryArtist, trackCountLabel } from '../../utils/catalog';
+import { useArtistAvatar } from '../../hooks/useArtistAvatar';
 import { TrackArtwork } from '../TrackCard';
 import { MediaCard } from '../MediaCard';
 import { LibraryFilterBar, SortChoice } from '../LibraryFilterBar';
@@ -18,6 +19,31 @@ const SORT_OPTIONS: SortChoice<ArtistSort>[] = [
   { id: 'name', label: 'A–Z' },
   { id: 'tracks', label: 'Songs' },
 ];
+
+const ArtistAvatar: React.FC<{ name: string; fallbackTrack: Track }> = ({ name, fallbackTrack }) => {
+  const avatar = useArtistAvatar(name, fallbackTrack.artistId);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [avatar]);
+
+  if (!avatar || failed) {
+    return <TrackArtwork track={fallbackTrack} size="md" />;
+  }
+
+  return (
+    <img
+      src={avatar}
+      alt=""
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      decoding="async"
+      className="w-full h-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+};
 
 export const ArtistsView: React.FC = () => {
   const {
@@ -67,9 +93,11 @@ export const ArtistsView: React.FC = () => {
   }, [artists, filter, sort]);
 
   return (
-    <div className="px-6 pb-8">
-      <h1 className="text-3xl font-bold mb-1">Artists</h1>
-      <p className="text-sm text-ink-2 mb-5">
+    <div className="px-6 pt-2 pb-8">
+      <h1 className="text-3xl sm:text-[34px] font-bold tracking-[-0.03em] leading-[1.1]">
+        Artists
+      </h1>
+      <p className="text-sm text-ink-2 mt-1.5 mb-5">
         {visibleArtists.length} {visibleArtists.length === 1 ? 'artist' : 'artists'}
         {filter.trim() ? ` matching "${filter.trim()}"` : ''}
       </p>
@@ -116,7 +144,7 @@ export const ArtistsView: React.FC = () => {
               <MediaCard
                 key={artist.name}
                 round
-                artwork={<TrackArtwork track={artist.tracks[0]} size="md" />}
+                artwork={<ArtistAvatar name={artist.name} fallbackTrack={artist.tracks[0]} />}
                 title={artist.name}
                 subtitle={trackCountLabel(artist.tracks.length)}
                 isPlaying={playingHere}

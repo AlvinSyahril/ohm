@@ -1,5 +1,5 @@
-import React, { Suspense, lazy, useRef } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { usePlayerStore } from '../store/usePlayerStore';
@@ -94,6 +94,10 @@ export const MainCanvas: React.FC = () => {
     ? `explore:${exploreCategory.browseId}:${exploreCategory.params || ''}`
     : activeTab;
 
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [viewKey]);
+
   const renderView = () => {
     if (searchQuery) return <SearchView />;
     if (collection || isSongsTab || activePlaylistId !== null) return <SongsView />;
@@ -143,11 +147,9 @@ export const MainCanvas: React.FC = () => {
       </header>
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-        <AnimatePresence mode="wait" onExitComplete={() => scrollRef.current?.scrollTo({ top: 0 })}>
-          <motion.div key={viewKey} variants={pageVariants} initial="initial" animate="enter" exit="exit">
-            <Suspense fallback={<SkeletonRows />}>{renderView()}</Suspense>
-          </motion.div>
-        </AnimatePresence>
+        <motion.div key={viewKey} variants={pageVariants} initial="initial" animate="enter">
+          <Suspense fallback={<SkeletonRows />}>{renderView()}</Suspense>
+        </motion.div>
       </div>
     </main>
   );

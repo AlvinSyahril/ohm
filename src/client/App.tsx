@@ -21,6 +21,12 @@ const AboutModal = lazy(() =>
 const SoundReceiptModal = lazy(() =>
   import('./components/SoundReceiptModal').then((m) => ({ default: m.SoundReceiptModal }))
 );
+const UpdatePromptModal = lazy(() =>
+  import('./components/UpdatePromptModal').then((m) => ({ default: m.UpdatePromptModal }))
+);
+const WhatsNewModal = lazy(() =>
+  import('./components/WhatsNewModal').then((m) => ({ default: m.WhatsNewModal }))
+);
 
 export const App: React.FC = () => {
   return (
@@ -38,6 +44,8 @@ export const App: React.FC = () => {
         <KeyboardShortcutsModal />
         <AboutModal />
         <SoundReceiptModal />
+        <UpdatePromptModal />
+        <WhatsNewModal />
       </Suspense>
       <FloatingPlayerDeck />
       <Toaster />

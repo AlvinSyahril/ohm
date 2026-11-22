@@ -258,7 +258,7 @@ async function createWindow() {
     titleBarOverlay: {
       color: '#070807',
       symbolColor: '#a0a8a3',
-      height: 36,
+      height: 32,
     },
     webPreferences: {
       preload: preloadPath,

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, GripVertical, ListPlus, MoreHorizontal } from 'lucide-react';
+import { X, GripVertical, ListPlus, MoreHorizontal, Shuffle } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Track, usePlayerStore } from '../store/usePlayerStore';
 import { toast } from '../store/useToastStore';
@@ -18,6 +18,8 @@ export const QueueDrawer: React.FC = () => {
     playTrack,
     removeFromQueue,
     clearQueue,
+    restoreQueue,
+    shuffleQueue,
     reorderQueue,
     saveQueueAsPlaylist,
     autoplay,
@@ -32,6 +34,8 @@ export const QueueDrawer: React.FC = () => {
       playTrack: s.playTrack,
       removeFromQueue: s.removeFromQueue,
       clearQueue: s.clearQueue,
+      restoreQueue: s.restoreQueue,
+      shuffleQueue: s.shuffleQueue,
       reorderQueue: s.reorderQueue,
       saveQueueAsPlaylist: s.saveQueueAsPlaylist,
       autoplay: s.autoplay,
@@ -194,11 +198,28 @@ export const QueueDrawer: React.FC = () => {
                               <ListPlus className="w-3.5 h-3.5" />
                               Save
                             </button>
+                            {queue.length > 1 && (
+                              <button
+                                onClick={() => {
+                                  shuffleQueue();
+                                  toast('Shuffled upcoming tracks');
+                                }}
+                                title="Shuffle upcoming"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-ink-2 hover:text-ink transition-colors"
+                              >
+                                <Shuffle className="w-3.5 h-3.5" />
+                                Shuffle
+                              </button>
+                            )}
                             {queue.length > 0 && (
                               <button
                                 onClick={() => {
+                                  const snapshot = [...queue];
                                   clearQueue();
-                                  toast('Queue cleared');
+                                  toast('Queue cleared', {
+                                    label: 'Undo',
+                                    onAction: () => restoreQueue(snapshot),
+                                  });
                                 }}
                                 className="text-xs font-bold text-ink-2 hover:text-ink hover:underline"
                               >

@@ -100,8 +100,12 @@ export const Slider: React.FC<SliderProps> = ({
     }
 
     let rafId = 0;
+    const isWindowActive = () =>
+      document.visibilityState === 'visible' &&
+      (typeof document.hasFocus !== 'function' || document.hasFocus());
+
     const tick = () => {
-      if (document.visibilityState !== 'visible') {
+      if (!isWindowActive()) {
         rafId = 0;
         return;
       }
@@ -114,8 +118,8 @@ export const Slider: React.FC<SliderProps> = ({
       rafId = requestAnimationFrame(tick);
     };
 
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
+    const syncLoop = () => {
+      if (isWindowActive()) {
         if (!rafId) rafId = requestAnimationFrame(tick);
       } else if (rafId) {
         cancelAnimationFrame(rafId);
@@ -123,12 +127,16 @@ export const Slider: React.FC<SliderProps> = ({
       }
     };
 
-    if (document.visibilityState === 'visible') {
+    if (isWindowActive()) {
       rafId = requestAnimationFrame(tick);
     }
-    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('visibilitychange', syncLoop);
+    window.addEventListener('focus', syncLoop);
+    window.addEventListener('blur', syncLoop);
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('visibilitychange', syncLoop);
+      window.removeEventListener('focus', syncLoop);
+      window.removeEventListener('blur', syncLoop);
       if (rafId) cancelAnimationFrame(rafId);
     };
   }, [liveActive, applyVisualRatio]);

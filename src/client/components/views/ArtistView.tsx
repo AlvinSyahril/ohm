@@ -6,7 +6,7 @@ import { Track, usePlayerStore } from '../../store/usePlayerStore';
 import { toast } from '../../store/useToastStore';
 import { GLOBAL_TRENDING_TRACKS } from '../../utils/recommendationEngine';
 import { buildAlbums, primaryArtist, trackCountLabel } from '../../utils/catalog';
-import { TrackArtwork, TrackRow, upgradeThumbnail } from '../TrackCard';
+import { needsYoutubeLetterboxCrop, TrackArtwork, TrackRow, upgradeThumbnail } from '../TrackCard';
 import { MediaCard } from '../MediaCard';
 import { gridVariants } from '../../utils/motion';
 
@@ -47,22 +47,56 @@ const SafeRemoteImg: React.FC<{
   loading?: 'lazy' | 'eager';
 }> = ({ src, className = 'w-full h-full object-cover', loading }) => {
   const [tier, setTier] = useState(0);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
     setTier(0);
   }, [src]);
   const upgraded = src ? upgradeThumbnail(src, undefined, 'md') : '';
   const candidates = upgraded && upgraded !== src ? [upgraded, src] : src ? [src] : [];
   const activeSrc = candidates[tier];
+  const needsLetterboxCrop = needsYoutubeLetterboxCrop(activeSrc);
+
+  useEffect(() => {
+    const el = imgRef.current;
+    if (!el || !el.complete) return;
+    if (el.naturalWidth === 0) {
+      setTier((t) => t + 1);
+      return;
+    }
+    if (
+      activeSrc &&
+      activeSrc.includes('i.ytimg.com') &&
+      el.naturalWidth === 120 &&
+      el.naturalHeight === 90 &&
+      tier < candidates.length - 1
+    ) {
+      setTier((t) => t + 1);
+    }
+  }, [activeSrc]);
+
   if (!activeSrc) return <div className="w-full h-full bg-surface" />;
   return (
     <img
+      key={activeSrc}
+      ref={imgRef}
       src={activeSrc}
       alt=""
       decoding="async"
       referrerPolicy="no-referrer"
       loading={loading}
+      onLoad={(e) => {
+        const el = e.currentTarget;
+        if (
+          activeSrc.includes('i.ytimg.com') &&
+          el.naturalWidth === 120 &&
+          el.naturalHeight === 90 &&
+          tier < candidates.length - 1
+        ) {
+          setTier((t) => t + 1);
+        }
+      }}
       onError={() => setTier((t) => t + 1)}
-      className={className}
+      className={`${className} ${needsLetterboxCrop ? 'scale-[1.35]' : ''}`}
     />
   );
 };

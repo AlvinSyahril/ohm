@@ -45,6 +45,7 @@ export interface DiscordPresencePayload {
     artist: string;
     album?: string;
     artworkUrl?: string;
+    trackUrl?: string;
     isPlaying: boolean;
     startMs?: number;
     endMs?: number;

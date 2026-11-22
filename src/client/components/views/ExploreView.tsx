@@ -12,57 +12,10 @@ import {
 import { toast } from '../../store/useToastStore';
 import { MediaCard } from '../MediaCard';
 import { ArtistLinks } from '../ArtistLinks';
-import { TrackArtwork, TrackRow, upgradeThumbnail } from '../TrackCard';
+import { PosterArt, TrackArtwork, TrackRow } from '../TrackCard';
 import { gridVariants, itemVariants, SPRING } from '../../utils/motion';
 
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3';
-
-const PosterArt: React.FC<{ src?: string; title: string; round?: boolean }> = ({
-  src,
-  title,
-  round = false,
-}) => {
-  const [broken, setBroken] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => {
-    setBroken(false);
-    setLoaded(false);
-  }, [src]);
-
-  if (!src || broken) {
-    return (
-      <div
-        className={`w-full h-full flex items-center justify-center bg-hover text-ink-2 text-lg font-bold select-none ${
-          round ? 'rounded-full' : ''
-        }`}
-      >
-        {title.slice(0, 2).toUpperCase()}
-      </div>
-    );
-  }
-
-  return (
-    <img
-      key={src}
-      ref={(el) => {
-        if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
-      }}
-      src={upgradeThumbnail(src, undefined, 'md')}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onLoad={() => setLoaded(true)}
-      onError={() => {
-        setLoaded(false);
-        setBroken(true);
-      }}
-      className={`w-full h-full object-cover transition-opacity duration-500 ${
-        loaded ? 'opacity-100' : 'opacity-0'
-      }`}
-    />
-  );
-};
 
 const CategorySkeleton: React.FC<{ browseId: string }> = ({ browseId }) => {
   if (browseId === 'FEmusic_moods_and_genres') {
@@ -108,11 +61,6 @@ const CategorySkeleton: React.FC<{ browseId: string }> = ({ browseId }) => {
 
 const ExploreSkeleton: React.FC = () => (
   <div className="space-y-8" aria-busy="true" aria-label="Loading explore">
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="h-14 rounded-md bg-raised animate-pulse" />
-      ))}
-    </div>
     <div className={GRID}>
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="space-y-2.5 p-2.5">
@@ -415,8 +363,10 @@ export const ExploreView: React.FC = () => {
   return (
     <div className="px-6 pb-12 space-y-10">
       <div className="pt-2">
-        <h1 className="text-3xl font-bold mb-1">Explore</h1>
-        <p className="text-sm text-ink-2">New releases, charts, and moods from YouTube Music.</p>
+        <h1 className="text-3xl sm:text-[34px] font-bold tracking-[-0.03em] leading-[1.1]">
+          Explore
+        </h1>
+        <p className="text-sm text-ink-2 mt-1.5">New releases, charts, and moods.</p>
       </div>
 
       {/* Top quick links */}

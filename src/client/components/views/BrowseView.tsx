@@ -546,7 +546,10 @@ export const BrowseView: React.FC = () => {
                   <div className="text-xs font-medium text-accent mb-1.5">
                     {leadEyebrow}
                   </div>
-                  <h1 className="text-3xl sm:text-[38px] font-bold tracking-[-0.03em] leading-[1.08] truncate">
+                  <h1
+                    title={leadTrack.title}
+                    className="text-3xl sm:text-[38px] font-bold tracking-[-0.03em] leading-[1.08] line-clamp-2 break-words"
+                  >
                     {leadTrack.title}
                   </h1>
                   <div className="mt-2 flex items-center gap-2 text-sm text-ink-2 min-w-0">

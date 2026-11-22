@@ -17,7 +17,7 @@ export const pageVariants: Variants = {
 
 export const gridVariants: Variants = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.035, delayChildren: 0.05 } },
+  show: { transition: { staggerChildren: 0.02, delayChildren: 0.02 } },
 };
 
 export const itemVariants: Variants = {

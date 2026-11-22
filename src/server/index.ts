@@ -145,7 +145,16 @@ app.get('/api/radio/:videoId', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Invalid videoId parameter' });
   }
   try {
-    const tracks = await getRadioTracks(videoId);
+    const fresh = req.query.fresh === '1' || req.query.fresh === 'true';
+    const rawExclude = queryString(req.query.exclude, 700);
+    const excludeIds = new Set<string>(
+      rawExclude
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => VIDEO_ID_RE.test(id))
+        .slice(0, 40)
+    );
+    const tracks = await getRadioTracks(videoId, { fresh, excludeIds });
     res.json({ seedVideoId: videoId, count: tracks.length, tracks });
   } catch (err) {
     reportServerError('radio', 'Radio resolve error:', err, { videoId });
@@ -283,10 +292,12 @@ app.get('/api/artwork', async (req: Request, res: Response) => {
   }
 });
 
-// Live Explore Feed endpoint
-app.get('/api/explore', async (_req: Request, res: Response) => {
+// Live Explore Feed endpoint (defaults to Global; blends local releases when localRatio > 0)
+app.get('/api/explore', async (req: Request, res: Response) => {
+  const rawRatio = Number(req.query.localRatio);
+  const localRatio = Number.isFinite(rawRatio) && rawRatio > 0 ? Math.min(0.4, rawRatio) : 0;
   try {
-    const feed = await getExploreFeed();
+    const feed = await getExploreFeed({ localRatio });
     res.json(feed);
   } catch (err) {
     reportServerError('explore', 'Explore feed error:', err);

@@ -17,18 +17,21 @@ import { usePlayerStore, Track } from '../../store/usePlayerStore';
 import { toast } from '../../store/useToastStore';
 import { GLOBAL_TRENDING_TRACKS } from '../../utils/recommendationEngine';
 import { trackCountLabel } from '../../utils/catalog';
+import { loadPlayEvents } from '../../utils/playStats';
 import { TrackRow, TrackArtwork } from '../TrackCard';
 import { PlaylistCollage } from '../PlaylistCollage';
 import { popoverVariants, SPRING } from '../../utils/motion';
 
 type SortKey = 'default' | 'title' | 'artist' | 'duration';
+type RecentBucket = 'Today' | 'Yesterday' | 'This week' | 'Earlier';
 
-const SORT_OPTIONS: { id: SortKey; label: string }[] = [
-  { id: 'default', label: 'Custom order' },
+const OTHER_SORT_OPTIONS: { id: SortKey; label: string }[] = [
   { id: 'title', label: 'Title' },
   { id: 'artist', label: 'Artist' },
   { id: 'duration', label: 'Duration' },
 ];
+
+const BUCKET_ORDER: RecentBucket[] = ['Today', 'Yesterday', 'This week', 'Earlier'];
 
 const totalLabel = (tracks: Track[]): string => {
   const secs = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
@@ -51,6 +54,7 @@ export const SongsView: React.FC = () => {
     activePlaylistId,
     renamePlaylist,
     deletePlaylist,
+    restorePlaylist,
     reorderPlaylistTrack,
     setActiveTab,
     collection,
@@ -68,6 +72,7 @@ export const SongsView: React.FC = () => {
       activePlaylistId: s.activePlaylistId,
       renamePlaylist: s.renamePlaylist,
       deletePlaylist: s.deletePlaylist,
+      restorePlaylist: s.restorePlaylist,
       reorderPlaylistTrack: s.reorderPlaylistTrack,
       setActiveTab: s.setActiveTab,
       collection: s.collection,
@@ -258,8 +263,8 @@ export const SongsView: React.FC = () => {
   const playAll = () => {
     if (inThisList) {
       togglePlay();
-    } else if (tracks.length > 0) {
-      playTrack(tracks[0], tracks.slice(1));
+    } else if (displayTracks.length > 0) {
+      playTrack(displayTracks[0], displayTracks.slice(1));
     }
   };
 
@@ -289,10 +294,14 @@ export const SongsView: React.FC = () => {
       setConfirmDelete(true);
       return;
     }
+    const snapshot = { ...playlist, tracks: [...playlist.tracks] };
     const name = playlist.name;
     deletePlaylist(playlist.id);
     setActiveTab('songs');
-    toast(`Deleted ${name}`);
+    toast(`Deleted "${name}"`, {
+      label: 'Undo',
+      onAction: () => restorePlaylist(snapshot),
+    });
   };
 
   const emptyCopy =
@@ -306,7 +315,86 @@ export const SongsView: React.FC = () => {
       ? { head: 'Nothing played yet', body: 'Songs you listen to will show up here.' }
       : { head: 'No matching songs', body: 'Try a different filter.' };
 
-  const activeSortLabel = SORT_OPTIONS.find((o) => o.id === sort)?.label ?? 'Custom order';
+  const defaultSortLabel = (): string => {
+    if (playlist) return 'Custom order';
+    if (collection) return 'Album order';
+    if (activeTab === 'recent') return 'Most recent';
+    if (activeTab === 'favorites') return 'Recently added';
+    return 'Default';
+  };
+
+  const sortOptions: { id: SortKey; label: string }[] = [
+    { id: 'default', label: defaultSortLabel() },
+    ...OTHER_SORT_OPTIONS,
+  ];
+  const activeSortLabel = sortOptions.find((o) => o.id === sort)?.label ?? defaultSortLabel();
+
+  const isLibraryTab = !collection && !playlist;
+  const heroHeadingClass = isLibraryTab
+    ? 'text-3xl sm:text-[34px] font-bold tracking-[-0.03em] leading-[1.1] truncate'
+    : 'text-4xl sm:text-[54px] font-bold leading-[1.06] tracking-[-0.03em] truncate';
+
+  const shouldGroupRecent =
+    activeTab === 'recent' && isLibraryTab && sort === 'default' && !filter.trim();
+
+  const lastPlayed = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const ev of loadPlayEvents()) {
+      const prev = map.get(ev.id) ?? 0;
+      if (ev.playedAt > prev) map.set(ev.id, ev.playedAt);
+    }
+    return map;
+  }, [history]);
+
+  const { displayTracks, recentGroups } = useMemo(() => {
+    if (!shouldGroupRecent || tracks.length === 0) {
+      return { displayTracks: tracks, recentGroups: null };
+    }
+
+    // Tracks skipped before 15s may be in history without a playEvent; infer recency from neighbors
+    const effectiveTs = new Map<string, number>();
+    let runningFallback = Date.now();
+    for (let i = 0; i < tracks.length; i += 1) {
+      const t = tracks[i];
+      const recorded = lastPlayed.get(t.id);
+      if (recorded !== undefined) {
+        effectiveTs.set(t.id, recorded);
+        runningFallback = recorded;
+      } else {
+        effectiveTs.set(t.id, runningFallback);
+      }
+    }
+
+    const sorted = [...tracks].sort((a, b) => {
+      const ta = effectiveTs.get(a.id) ?? 0;
+      const tb = effectiveTs.get(b.id) ?? 0;
+      return tb - ta;
+    });
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
+    const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
+
+    const buckets = new Map<RecentBucket, Track[]>(BUCKET_ORDER.map((label) => [label, []]));
+    for (const t of sorted) {
+      const ts = effectiveTs.get(t.id) ?? 0;
+      const bucket: RecentBucket =
+        ts >= todayStart
+          ? 'Today'
+          : ts >= yesterdayStart
+          ? 'Yesterday'
+          : ts >= weekStart
+          ? 'This week'
+          : 'Earlier';
+      buckets.get(bucket)!.push(t);
+    }
+
+    const groups = BUCKET_ORDER.map((label) => ({ label, tracks: buckets.get(label)! })).filter(
+      (g) => g.tracks.length > 0
+    );
+    return { displayTracks: sorted, recentGroups: groups };
+  }, [shouldGroupRecent, tracks, lastPlayed]);
 
   return (
     <div className="pb-8">
@@ -390,17 +478,13 @@ export const SongsView: React.FC = () => {
                 title="Click to rename playlist"
                 className="group inline-flex items-center gap-3 max-w-full text-left"
               >
-                <h1 className="text-4xl sm:text-[54px] font-bold leading-[1.06] tracking-[-0.03em] truncate">
-                  {title}
-                </h1>
+                <h1 className={heroHeadingClass}>{title}</h1>
                 <Pencil className="w-5 h-5 text-ink-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
               </button>
             ) : (
-              <h1 className="text-4xl sm:text-[54px] font-bold leading-[1.06] tracking-[-0.03em] truncate">
-                {title}
-              </h1>
+              <h1 className={heroHeadingClass}>{title}</h1>
             )}
-            <p className="text-sm text-ink-2 mt-3">{meta}</p>
+            <p className={`text-sm text-ink-2 ${isLibraryTab ? 'mt-1.5' : 'mt-3'}`}>{meta}</p>
           </div>
         </div>
       </div>
@@ -504,7 +588,7 @@ export const SongsView: React.FC = () => {
                   style={{ transformOrigin: 'top right' }}
                   className="absolute right-0 top-full mt-1 w-44 bg-hover border border-line rounded-md p-1 z-30"
                 >
-                  {SORT_OPTIONS.map((opt) => {
+                  {sortOptions.map((opt) => {
                     const selected = sort === opt.id;
                     return (
                       <button
@@ -559,18 +643,40 @@ export const SongsView: React.FC = () => {
             <p className="text-xl font-bold">{emptyCopy.head}</p>
             <p className="text-sm text-ink-2 mt-2">{emptyCopy.body}</p>
           </div>
+        ) : recentGroups ? (
+          (() => {
+            let runningIdx = 0;
+            return recentGroups.map((group) => (
+              <div key={group.label}>
+                <div className="px-4 pt-5 pb-1.5 text-xs font-semibold text-ink-3 tracking-wide">
+                  {group.label}
+                </div>
+                {group.tracks.map((track) => {
+                  const rowIdx = runningIdx++;
+                  return (
+                    <TrackRow
+                      key={`${track.id}-${rowIdx}`}
+                      track={track}
+                      index={rowIdx}
+                      contextQueue={displayTracks}
+                    />
+                  );
+                })}
+              </div>
+            ));
+          })()
         ) : (
-          tracks.map((track, i) => (
+          displayTracks.map((track, i) => (
             <TrackRow
               key={`${track.id}-${i}`}
               track={track}
               index={i}
-              contextQueue={tracks}
+              contextQueue={displayTracks}
               onMoveUp={
                 canReorder && i > 0 ? () => reorderPlaylistTrack(playlist!.id, i, i - 1) : undefined
               }
               onMoveDown={
-                canReorder && i < tracks.length - 1
+                canReorder && i < displayTracks.length - 1
                   ? () => reorderPlaylistTrack(playlist!.id, i, i + 1)
                   : undefined
               }

@@ -132,8 +132,12 @@ export const EmberDriftCanvas: React.FC<EmberDriftCanvasProps> = ({ active, isPl
     let smoothBass = 0;
     let smoothEnergy = 0;
 
+    const isWindowActive = () =>
+      document.visibilityState === 'visible' &&
+      (typeof document.hasFocus !== 'function' || document.hasFocus());
+
     const tick = (ts: number) => {
-      if (document.visibilityState !== 'visible') {
+      if (!isWindowActive()) {
         rafId = 0;
         return;
       }
@@ -149,8 +153,8 @@ export const EmberDriftCanvas: React.FC<EmberDriftCanvasProps> = ({ active, isPl
       rafId = requestAnimationFrame(tick);
     };
 
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
+    const syncLoop = () => {
+      if (isWindowActive()) {
         lastTs = performance.now();
         if (!rafId) rafId = requestAnimationFrame(tick);
       } else if (rafId) {
@@ -159,13 +163,17 @@ export const EmberDriftCanvas: React.FC<EmberDriftCanvasProps> = ({ active, isPl
       }
     };
 
-    if (document.visibilityState === 'visible') {
+    if (isWindowActive()) {
       rafId = requestAnimationFrame(tick);
     }
-    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('visibilitychange', syncLoop);
+    window.addEventListener('focus', syncLoop);
+    window.addEventListener('blur', syncLoop);
 
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('visibilitychange', syncLoop);
+      window.removeEventListener('focus', syncLoop);
+      window.removeEventListener('blur', syncLoop);
       ro?.disconnect();
       if (rafId) cancelAnimationFrame(rafId);
     };

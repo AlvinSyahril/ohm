@@ -191,6 +191,8 @@ interface PlayerState {
   isShortcutsOpen: boolean;
   isAboutOpen: boolean;
   isReceiptOpen: boolean;
+  isUpdateModalOpen: boolean;
+  isWhatsNewOpen: boolean;
   discordRpcEnabled: boolean;
   discordClientId: string;
   discordRpcStatus: DiscordRpcStatus;
@@ -235,6 +237,8 @@ interface PlayerState {
   setShortcutsOpen: (open: boolean) => void;
   setAboutOpen: (open: boolean) => void;
   setReceiptOpen: (open: boolean) => void;
+  setUpdateModalOpen: (open: boolean) => void;
+  setWhatsNewOpen: (open: boolean) => void;
   setDiscordRpcEnabled: (enabled: boolean) => void;
   setDiscordClientId: (clientId: string) => void;
   setDiscordRpcStatus: (status: DiscordRpcStatus) => void;
@@ -283,6 +287,8 @@ interface PlayerState {
   playNext: (track: Track) => void;
   removeFromQueue: (id: string) => void;
   clearQueue: () => void;
+  restoreQueue: (tracks: Track[]) => void;
+  shuffleQueue: () => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   saveQueueAsPlaylist: (name?: string) => string | null;
 
@@ -293,6 +299,7 @@ interface PlayerState {
   createPlaylistWithTrack: (track: Track) => Playlist;
   renamePlaylist: (id: string, name: string) => void;
   deletePlaylist: (id: string) => void;
+  restorePlaylist: (playlist: Playlist) => void;
   addTrackToPlaylist: (playlistId: string, track: Track) => void;
   removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
   reorderPlaylistTrack: (playlistId: string, fromIndex: number, toIndex: number) => void;
@@ -559,14 +566,34 @@ const restoredSession = loadSession();
 const INFINITY_LOW_WATER = 3;
 
 let lastNonZeroVolume = 0.85;
+const recentRadioServedIds: string[] = [];
+const radioRollCountBySeed = new Map<string, number>();
 
 const clampVol = (v: number) => Math.max(0, Math.min(1, v));
 
+function rememberRadioServed(ids: string[]) {
+  for (const id of ids) {
+    const idx = recentRadioServedIds.indexOf(id);
+    if (idx !== -1) recentRadioServedIds.splice(idx, 1);
+    recentRadioServedIds.push(id);
+  }
+  if (recentRadioServedIds.length > 40) {
+    recentRadioServedIds.splice(0, recentRadioServedIds.length - 40);
+  }
+}
+
 async function fetchRadioCandidates(
   seedId: string,
-  excludeIds: Set<string>
+  excludeIds: Set<string>,
+  fresh = false
 ): Promise<Track[]> {
-  const res = await fetch(`/api/radio/${encodeURIComponent(seedId)}`);
+  const params = new URLSearchParams();
+  if (fresh) params.set('fresh', '1');
+  if (excludeIds.size > 0) {
+    params.set('exclude', Array.from(excludeIds).slice(-30).join(','));
+  }
+  const qs = params.toString();
+  const res = await fetch(`/api/radio/${encodeURIComponent(seedId)}${qs ? `?${qs}` : ''}`);
   if (!res.ok) return [];
   const data = (await res.json()) as { tracks?: Track[] };
   return (data.tracks || [])
@@ -771,11 +798,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isShortcutsOpen: false,
   isAboutOpen: false,
   isReceiptOpen: false,
+  isUpdateModalOpen: false,
+  isWhatsNewOpen: false,
   discordRpcEnabled: (() => {
     try {
-      return localStorage.getItem('ohm_discord_rpc') === 'true';
+      return localStorage.getItem('ohm_discord_rpc') !== 'false';
     } catch {
-      return false;
+      return true;
     }
   })(),
   discordClientId: (() => {
@@ -874,6 +903,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   setReceiptOpen: (open) => {
     set({ isReceiptOpen: open });
+  },
+  setUpdateModalOpen: (open) => {
+    set({ isUpdateModalOpen: open });
+  },
+  setWhatsNewOpen: (open) => {
+    set({ isWhatsNewOpen: open });
   },
   setDiscordRpcEnabled: (enabled) => {
     try {
@@ -1369,11 +1404,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
 
     try {
-      const candidates = await fetchRadioCandidates(
+      const prevRolls = radioRollCountBySeed.get(track.id) ?? 0;
+      radioRollCountBySeed.set(track.id, prevRolls + 1);
+
+      const exclude = new Set<string>([
         track.id,
-        new Set<string>([track.id])
-      );
+        ...recentRadioServedIds.slice(-24),
+        ...updatedHistory.slice(0, 8).map((t) => t.id),
+      ]);
+      const candidates = await fetchRadioCandidates(track.id, exclude, prevRolls > 0 || recentRadioServedIds.length > 0);
       if (seq !== radioSeq) return;
+      rememberRadioServed(candidates.slice(0, 12).map((c) => c.id));
       set({
         queue: candidates,
         tasteTracks: candidates.slice(0, 16),
@@ -1611,6 +1652,26 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ queue: [] });
   },
 
+  restoreQueue: (tracks) => {
+    set({ queue: tracks.filter(isValidTrack) });
+  },
+
+  shuffleQueue: () => {
+    const { queue } = get();
+    if (queue.length < 2) return;
+    const shuffleSlice = (items: Track[]) => {
+      const copy = [...items];
+      for (let i = copy.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    };
+    const manual = shuffleSlice(queue.filter((t) => t.queueOrigin !== 'auto'));
+    const auto = shuffleSlice(queue.filter((t) => t.queueOrigin === 'auto'));
+    set({ queue: [...manual, ...auto] });
+  },
+
   reorderQueue: (fromIndex, toIndex) => {
     const { queue } = get();
     if (
@@ -1746,6 +1807,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }));
   },
 
+  restorePlaylist: (playlist) => {
+    const current = get().playlists;
+    if (current.some((p) => p.id === playlist.id)) return;
+    const updated = [...current, playlist];
+    savePlaylists(updated);
+    set({ playlists: updated });
+  },
+
   addTrackToPlaylist: (playlistId, track) => {
     const updated = get().playlists.map((pl) => {
       if (pl.id !== playlistId) return pl;
@@ -1807,7 +1876,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (get().hasFetchedExplore || get().isLoadingExplore) return;
     set({ isLoadingExplore: true, exploreError: false });
     try {
-      const res = await fetch('/api/explore');
+      const { history, favorites, playlists } = get();
+      const sample = [...history, ...favorites, ...playlists.flatMap((p) => p.tracks)].slice(0, 40);
+      const localRe =
+        /\b(aku|kamu|kita|cinta|hati|rindu|jiwa|luka|pergi|pulang|malam|senja|langit|bintang|rasa|sepi|tak|yang|untuk|bersama|selamanya|kenangan|dalu|tresno|loro|ati|sakit|bahagia|sempurna|terima kasih|resah|nanti|sampai|menunggu|berdua|hanya|paling|pelampiasan|dosa|lumpur|berlian|koplo|dangdut|lagu)\b/i;
+      const localHits = sample.filter(
+        (t) => localRe.test(t.title) || localRe.test(t.artist)
+      ).length;
+      const localRatio =
+        localHits >= 3 || (sample.length >= 5 && localHits / sample.length >= 0.2)
+          ? 0.3
+          : localHits >= 2
+          ? 0.2
+          : 0;
+      const url = localRatio > 0 ? `/api/explore?localRatio=${localRatio}` : '/api/explore';
+
+      const res = await fetch(url);
       if (res.ok) {
         const data = (await res.json()) as ExploreFeed;
         const hasContent = Boolean(

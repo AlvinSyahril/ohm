@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, MoreHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
@@ -37,7 +37,17 @@ const resolveArtworkPx = (size: number | ArtworkSize): number =>
 const ytQualityForPx = (px: number): string =>
   px >= 400 ? 'maxresdefault.jpg' : 'mqdefault.jpg';
 
-const UNCROPPED_YT_4_3_RE = /\/(?:sddefault|hqdefault)\.jpg(?:\?|$)/i;
+const UNCROPPED_YT_RE = /\/(?:maxresdefault|sddefault|hqdefault|mqdefault)\.jpg(?:\?|$)/i;
+
+/**
+ * True when a YouTube video thumbnail is an uncropped 16:9/4:3 frame without `?sqp=`
+ * cropping, which commonly carries baked-in top/bottom letterbox bars.
+ */
+export const needsYoutubeLetterboxCrop = (src?: string): boolean =>
+  !!src &&
+  /(?:i|img)\.yt(?:img)?\.com/i.test(src) &&
+  UNCROPPED_YT_RE.test(src) &&
+  !src.includes('sqp=');
 
 export const upgradeThumbnail = (
   url?: string,
@@ -47,6 +57,9 @@ export const upgradeThumbnail = (
   const px = resolveArtworkPx(size);
   if (!url) {
     return videoId ? `https://i.ytimg.com/vi/${videoId}/${ytQualityForPx(px)}` : '';
+  }
+  if (url.includes('sqp=')) {
+    return url;
   }
   if (/=w\d+-h\d+/.test(url)) {
     return url.replace(/=w\d+-h\d+/, `=w${px}-h${px}`);
@@ -72,6 +85,7 @@ export const TrackArtwork: React.FC<{
 }> = ({ track, size = 'sm', className = 'w-full h-full object-cover' }) => {
   const [tier, setTier] = useState<number>(0);
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
     setTier(0);
@@ -84,7 +98,7 @@ export const TrackArtwork: React.FC<{
       ? ['mqdefault.jpg', 'sddefault.jpg', 'hqdefault.jpg']
       : ['mqdefault.jpg', 'hqdefault.jpg'];
 
-  // Preserve original ?sqp= cropped thumbnails before falling back to generic 4:3 URLs
+  // Preserve original ?sqp= cropped thumbnails before falling back to generic uncropped URLs
   const hasCroppedSqp = Boolean(track.thumbnail && track.thumbnail.includes('sqp='));
   const rawList = [
     upgradeThumbnail(track.thumbnail, track.id, size),
@@ -95,8 +109,34 @@ export const TrackArtwork: React.FC<{
   const candidates = rawList.filter((u, idx) => rawList.indexOf(u) === idx);
 
   const src = candidates[tier];
-  const needsLetterboxCrop =
-    !!src && UNCROPPED_YT_4_3_RE.test(src) && !src.includes('sqp=');
+  const needsLetterboxCrop = needsYoutubeLetterboxCrop(src);
+
+  const handleReady = (el: HTMLImageElement) => {
+    // YouTube returns a 120x90 grey stub when maxresdefault/sddefault is missing for older uploads
+    if (
+      src &&
+      src.includes('i.ytimg.com') &&
+      el.naturalWidth === 120 &&
+      el.naturalHeight === 90 &&
+      tier < candidates.length - 1
+    ) {
+      setLoaded(false);
+      setTier((t) => t + 1);
+      return;
+    }
+    setLoaded(true);
+  };
+
+  useEffect(() => {
+    setLoaded(false);
+    const el = imgRef.current;
+    if (!el || !el.complete) return;
+    if (el.naturalWidth === 0) {
+      setTier((t) => t + 1);
+      return;
+    }
+    handleReady(el);
+  }, [src]);
 
   if (!src) {
     const initials = (track.title || 'O')
@@ -115,28 +155,10 @@ export const TrackArtwork: React.FC<{
     );
   }
 
-  const handleReady = (el: HTMLImageElement) => {
-    // YouTube returns a 120x90 grey stub when maxresdefault/sddefault is missing for older uploads
-    if (
-      src.includes('i.ytimg.com') &&
-      el.naturalWidth === 120 &&
-      el.naturalHeight === 90 &&
-      tier < candidates.length - 1
-    ) {
-      setLoaded(false);
-      setTier((t) => t + 1);
-      return;
-    }
-    setLoaded(true);
-  };
-
   return (
     <img
       key={src}
-      ref={(el) => {
-        // Cached images can finish before React attaches onLoad
-        if (el && el.complete && el.naturalWidth > 0) handleReady(el);
-      }}
+      ref={imgRef}
       src={src}
       alt=""
       referrerPolicy="no-referrer"
@@ -148,7 +170,97 @@ export const TrackArtwork: React.FC<{
         setTier((t) => t + 1);
       }}
       className={`${className} transition-opacity duration-500 ${
-        needsLetterboxCrop ? 'scale-[1.34]' : ''
+        needsLetterboxCrop ? 'scale-[1.35]' : ''
+      } ${loaded ? 'opacity-100' : 'opacity-0'}`}
+    />
+  );
+};
+
+/**
+ * Shared square/round poster artwork for Explore, Search, and Collection cards.
+ */
+export const PosterArt: React.FC<{ src?: string; title: string; round?: boolean }> = ({
+  src,
+  title,
+  round = false,
+}) => {
+  const [tier, setTier] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    setTier(0);
+    setLoaded(false);
+  }, [src]);
+
+  const upgraded = src ? upgradeThumbnail(src, undefined, 'md') : '';
+  const candidates =
+    upgraded && upgraded !== src ? [upgraded, src!] : src ? [src] : [];
+  const activeSrc = candidates[tier];
+  const needsLetterboxCrop = needsYoutubeLetterboxCrop(activeSrc);
+
+  useEffect(() => {
+    setLoaded(false);
+    const el = imgRef.current;
+    if (!el || !el.complete) return;
+    if (el.naturalWidth === 0) {
+      setTier((t) => t + 1);
+      return;
+    }
+    if (
+      activeSrc &&
+      activeSrc.includes('i.ytimg.com') &&
+      el.naturalWidth === 120 &&
+      el.naturalHeight === 90 &&
+      tier < candidates.length - 1
+    ) {
+      setTier((t) => t + 1);
+      return;
+    }
+    setLoaded(true);
+  }, [activeSrc]);
+
+  if (!activeSrc) {
+    return (
+      <div
+        className={`w-full h-full flex items-center justify-center bg-hover text-ink-2 text-lg font-bold select-none ${
+          round ? 'rounded-full' : ''
+        }`}
+      >
+        {title.slice(0, 2).toUpperCase()}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      key={activeSrc}
+      ref={imgRef}
+      src={activeSrc}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onLoad={(e) => {
+        const el = e.currentTarget;
+        if (
+          activeSrc.includes('i.ytimg.com') &&
+          el.naturalWidth === 120 &&
+          el.naturalHeight === 90 &&
+          tier < candidates.length - 1
+        ) {
+          setLoaded(false);
+          setTier((t) => t + 1);
+          return;
+        }
+        setLoaded(true);
+      }}
+      onError={() => {
+        setLoaded(false);
+        setTier((t) => t + 1);
+      }}
+      className={`w-full h-full object-cover transition-opacity duration-500 ${
+        needsLetterboxCrop ? 'scale-[1.35]' : ''
       } ${loaded ? 'opacity-100' : 'opacity-0'}`}
     />
   );

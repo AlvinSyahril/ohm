@@ -16,6 +16,7 @@ export interface DiscordPresencePayload {
     artist: string;
     album?: string;
     artworkUrl?: string;
+    trackUrl?: string;
     isPlaying: boolean;
     startMs?: number;
     endMs?: number;
@@ -297,6 +298,19 @@ export class DiscordRpcClient {
     if (!this.ready || !this.socket || !this.enabled) return;
     const track = this.latestTrack;
 
+    const albumText = track?.album?.trim();
+    const largeText =
+      albumText && albumText.toLowerCase() !== 'empty'
+        ? `on ${albumText}`
+        : 'Ohm Desktop';
+
+    const buttons: { label: string; url: string }[] = [
+      { label: 'Download Ohm', url: 'https://www.nexorastudio.my.id/apps/ohm' },
+    ];
+    if (track?.trackUrl && track.trackUrl.startsWith('https://')) {
+      buttons.push({ label: 'Listen to Track', url: track.trackUrl });
+    }
+
     const activity = track
       ? {
           type: 2,
@@ -317,8 +331,9 @@ export class DiscordRpcClient {
               track.artworkUrl && track.artworkUrl.startsWith('https://')
                 ? track.artworkUrl
                 : 'ohm_logo',
-            large_text: clampRpcText(track.album || track.title, 'Ohm'),
+            large_text: clampRpcText(largeText, 'Ohm Desktop'),
           },
+          buttons,
           instance: false,
         }
       : null;

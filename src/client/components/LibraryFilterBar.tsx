@@ -36,7 +36,7 @@ export function LibraryFilterBar<T extends string>({
           onChange={(e) => onFilterChange(e.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}
-          className="w-full h-9 pl-9 pr-8 text-sm bg-surface hover:bg-raised focus:bg-raised border border-line rounded-md text-ink placeholder:text-ink-3 transition-colors"
+          className="w-full h-9 pl-9 pr-8 text-sm bg-raised hover:bg-hover focus:bg-hover rounded-md text-ink placeholder:text-ink-3 transition-colors focus:ring-1 focus:ring-ink-2"
         />
         {filter && (
           <button
@@ -50,14 +50,14 @@ export function LibraryFilterBar<T extends string>({
         )}
       </div>
 
-      <div className="flex items-center gap-1 p-1 rounded-md bg-surface border border-line">
+      <div className="h-9 flex items-center gap-1 p-1 rounded-md bg-raised">
         {sortOptions.map((opt) => (
           <button
             key={opt.id}
             type="button"
             onClick={() => onSortChange(opt.id)}
             className={`h-7 px-2.5 rounded-sm text-xs font-medium transition-colors ${
-              sort === opt.id ? 'bg-raised text-ink' : 'text-ink-2 hover:text-ink'
+              sort === opt.id ? 'bg-hover text-ink' : 'text-ink-2 hover:text-ink'
             }`}
           >
             {opt.label}

@@ -26,6 +26,11 @@ Living backlog of product ideas and UX upgrades for Ohm, kept lean and focused o
 
 ## Core Reliability & Desktop Backlog
 
+- **Discord Rich Presence v2 (`v0.2.1`):**
+  - Add clickable Discord RPC buttons (`Download Ohm` pointing to `https://www.nexorastudio.my.id/apps/ohm` and optional `Listen to Track` link) in `src/electron/discordRpc.ts`.
+  - Format `assets.large_text` as `on <Album>` (falling back to `Ohm Desktop` when missing) so ambiguous album names like `"Empty"` never look like blank placeholders.
+  - Default `discordRpcEnabled` to `true` (`localStorage.getItem('ohm_discord_rpc') !== 'false'`) on fresh desktop installs.
+- **Low-Latency Gaming / Unfocused Window Mode (`v0.2.1`):** Pause `Slider` and `EmberDriftCanvas` `requestAnimationFrame` loops on window `blur` so playing borderless/fullscreen games (e.g. Valorant) gets zero background GPU frame-time contention.
 - **Library Backup (JSON Export / Import):** Export/restore `favorites`, `playlists`, `ohm_play_events`, and preferences from the About modal so local libraries survive device swaps.
 - **Per-Track Lyric Sync Offset + Stage FX Toggle:** Quick `-0.5s / +0.5s` lyric timing nudge (saved per `videoId`) and a header toggle in `StageOverlay` for Ember Drift particles.
 - **Desktop Mini-Player & Windows Taskbar Controls:** Compact always-on-top window mode (`~360x110`) plus Windows taskbar hover media buttons (`setThumbarButtons`).

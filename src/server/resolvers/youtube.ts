@@ -85,6 +85,9 @@ function createYoutubeCache(): UniversalCache {
   }
 }
 
+let ytGlobalInstance: Innertube | null = null;
+let ytGlobalInitPromise: Promise<Innertube> | null = null;
+
 export async function getInnertube(): Promise<Innertube> {
   if (ytInstance) return ytInstance;
   if (!ytInitPromise) {
@@ -101,6 +104,30 @@ export async function getInnertube(): Promise<Innertube> {
       });
   }
   return ytInitPromise;
+}
+
+/**
+ * Global (US/English) Innertube client used as the default region for Explore
+ * so Western & international releases lead regardless of host IP geolocation.
+ */
+export async function getGlobalInnertube(): Promise<Innertube> {
+  if (ytGlobalInstance) return ytGlobalInstance;
+  if (!ytGlobalInitPromise) {
+    ytGlobalInitPromise = Innertube.create({
+      location: 'US',
+      lang: 'en',
+      cache: createYoutubeCache(),
+    })
+      .then((instance) => {
+        ytGlobalInstance = instance;
+        return instance;
+      })
+      .catch((err) => {
+        ytGlobalInitPromise = null;
+        throw err;
+      });
+  }
+  return ytGlobalInitPromise;
 }
 
 export interface TrackMetadata {
@@ -653,36 +680,61 @@ export async function getSearchSuggestions(query: string): Promise<string[]> {
   }
 }
 
-/**
- * Smart Radio & Up Next Engine from YouTube Music recommendation model
- */
-export async function getRadioTracks(videoId: string): Promise<TrackMetadata[]> {
+function shuffleInPlace<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
+
+function appendPanelItems(contents: any[], seen: Set<string>, out: TrackMetadata[]): void {
+  for (const item of contents || []) {
+    const vId = item?.video_id || item?.endpoint?.payload?.videoId;
+    if (!vId || seen.has(vId)) continue;
+    seen.add(vId);
+    const rawArtistId =
+      item.artists?.[0]?.channel_id || item.artists?.[0]?.endpoint?.payload?.browseId;
+    const albumId = item.album?.id || item.album?.endpoint?.payload?.browseId || undefined;
+    out.push({
+      id: vId,
+      title: item.title?.text || (typeof item.title === 'string' ? item.title : 'Unknown Track'),
+      artist: extractArtistNames(item.artists, item.author?.name || 'Unknown Artist'),
+      artistId:
+        typeof rawArtistId === 'string' && rawArtistId.startsWith('UC') ? rawArtistId : undefined,
+      album: item.album?.name,
+      albumId: typeof albumId === 'string' ? albumId : undefined,
+      duration: item.duration?.seconds,
+      thumbnail: readThumb(item, vId),
+      source: 'youtube',
+    });
+  }
+}
+
+async function getRawRadioPool(videoId: string): Promise<TrackMetadata[]> {
   const now = Date.now();
   const hit = getFreshCached(radioCache, videoId, now);
   if (hit) return hit.value;
 
   const yt = await getInnertube();
-  const upNext = await yt.music.getUpNext(videoId);
-  const tracks: TrackMetadata[] = [];
+  let upNext: any;
+  try {
+    upNext = await yt.music.getUpNext(videoId, true);
+  } catch {
+    upNext = await yt.music.getUpNext(videoId);
+  }
 
-  for (const item of (upNext as any).contents || []) {
-    const vId = item.video_id || item.endpoint?.payload?.videoId;
-    if (vId && !tracks.some((t) => t.id === vId)) {
-      const rawArtistId =
-        item.artists?.[0]?.channel_id || item.artists?.[0]?.endpoint?.payload?.browseId;
-      const albumId = item.album?.id || item.album?.endpoint?.payload?.browseId || undefined;
-      tracks.push({
-        id: vId,
-        title: item.title?.text || (typeof item.title === 'string' ? item.title : 'Unknown Track'),
-        artist: extractArtistNames(item.artists, item.author?.name || 'Unknown Artist'),
-        artistId:
-          typeof rawArtistId === 'string' && rawArtistId.startsWith('UC') ? rawArtistId : undefined,
-        album: item.album?.name,
-        albumId: typeof albumId === 'string' ? albumId : undefined,
-        duration: item.duration?.seconds,
-        thumbnail: readThumb(item, vId),
-        source: 'youtube',
-      });
+  const tracks: TrackMetadata[] = [];
+  const seen = new Set<string>();
+  appendPanelItems(upNext?.contents || [], seen, tracks);
+
+  // Pull one continuation page so the radio pool has ~40-60+ candidates like YT Music Automix
+  if (upNext?.has_continuation && typeof upNext.getContinuation === 'function') {
+    try {
+      const page2 = await upNext.getContinuation();
+      appendPanelItems(page2?.contents || [], seen, tracks);
+    } catch {
+      // Continuation is best-effort
     }
   }
 
@@ -690,6 +742,63 @@ export async function getRadioTracks(videoId: string): Promise<TrackMetadata[]> 
     setBoundedCache(radioCache, videoId, { value: tracks, expiresAt: now + GRAPH_TTL_MS }, MAX_GRAPH_CACHE);
   }
   return tracks;
+}
+
+export interface RadioOptions {
+  excludeIds?: Set<string>;
+  fresh?: boolean;
+}
+
+/**
+ * Smart Radio & Up Next Engine from YouTube Music recommendation model.
+ * Uses YT Music Automix + continuation pool + tiered weighted shuffle + optional 2-hop pivot
+ * so repeated "Go to song radio" clicks stay on-vibe while exploring fresh tracks.
+ */
+export async function getRadioTracks(
+  videoId: string,
+  options: RadioOptions = {}
+): Promise<TrackMetadata[]> {
+  const basePool = await getRawRadioPool(videoId);
+  if (basePool.length === 0) return [];
+
+  const exclude = options.excludeIds ?? new Set<string>();
+  const combined: TrackMetadata[] = [...basePool];
+  const seen = new Set<string>(basePool.map((t) => t.id));
+
+  // On repeat rolls / fresh exploration, blend in a 2-hop neighbor radio from a random mid-pool track
+  if (options.fresh && basePool.length >= 6) {
+    const pivotWindow = basePool.slice(2, Math.min(14, basePool.length));
+    const pivotCandidates = pivotWindow.filter((t) => !exclude.has(t.id));
+    const pickFrom = pivotCandidates.length > 0 ? pivotCandidates : pivotWindow;
+    const pivot = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+    if (pivot) {
+      try {
+        const hopPool = await getRawRadioPool(pivot.id);
+        for (const t of hopPool) {
+          if (!seen.has(t.id)) {
+            seen.add(t.id);
+            combined.push(t);
+          }
+        }
+      } catch {
+        // Fallback cleanly to basePool
+      }
+    }
+  }
+
+  // Separate unplayed/fresh candidates from recently heard ones (keep excluded as fallback tail)
+  const freshPool = combined.filter((t) => !exclude.has(t.id) && t.id !== videoId);
+  const deferredPool = combined.filter((t) => exclude.has(t.id) && t.id !== videoId);
+  const activePool = freshPool.length >= 10 ? freshPool : [...freshPool, ...deferredPool];
+
+  // Tiered YT Music mix: 2 random strong anchors from top 6, then shuffled mid & deep discovery
+  const topAnchors = shuffleInPlace(activePool.slice(0, Math.min(6, activePool.length)));
+  const lead = topAnchors.slice(0, 2);
+  const remainingTop = topAnchors.slice(2);
+  const midTier = shuffleInPlace([...remainingTop, ...activePool.slice(6, 24)]);
+  const deepTier = shuffleInPlace(activePool.slice(24));
+
+  return [...lead, ...midTier, ...deepTier];
 }
 
 /**
@@ -861,7 +970,8 @@ const parseExploreArtist = (item: any): RelatedArtist | null => {
   };
 };
 
-let exploreFeedCache: { value: ExploreFeed; expiresAt: number } | null = null;
+let globalExploreFeedCache: { value: ExploreFeed; expiresAt: number } | null = null;
+let localExploreFeedCache: { value: ExploreFeed; expiresAt: number } | null = null;
 const categoryCache = new Map<string, { value: ExploreCategoryData; expiresAt: number }>();
 const playlistCache = new Map<string, { value: PlaylistDetails; expiresAt: number }>();
 
@@ -924,13 +1034,41 @@ async function enrichMissingDurations(
  * Live Explore Feed from YouTube Music (`FEmusic_explore`): quick links,
  * new albums & singles, moods & genres, trending tracks, and music videos.
  */
-export async function getExploreFeed(): Promise<ExploreFeed> {
-  const now = Date.now();
-  if (exploreFeedCache && exploreFeedCache.expiresAt > now) {
-    return exploreFeedCache.value;
-  }
+function interleaveUnique<T>(
+  primary: T[],
+  secondary: T[],
+  getKey: (item: T) => string,
+  ratio: number
+): T[] {
+  if (ratio <= 0 || secondary.length === 0) return primary;
+  const maxExtra = Math.min(secondary.length, Math.max(2, Math.round(primary.length * ratio)));
+  const seen = new Set(primary.map(getKey));
+  const extras = secondary.filter((item) => {
+    const k = getKey(item);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, maxExtra);
 
-  const yt = await getInnertube();
+  if (extras.length === 0) return primary;
+  const lead = primary.slice(0, 3);
+  const tail = primary.slice(3);
+  const blended: T[] = [...lead];
+  const step = Math.max(2, Math.floor(tail.length / extras.length));
+  let extraIdx = 0;
+  for (let i = 0; i < tail.length; i += 1) {
+    blended.push(tail[i]);
+    if (extraIdx < extras.length && (i + 1) % step === 0) {
+      blended.push(extras[extraIdx++]);
+    }
+  }
+  while (extraIdx < extras.length) {
+    blended.push(extras[extraIdx++]);
+  }
+  return blended;
+}
+
+async function fetchRawExploreFeed(yt: Innertube): Promise<ExploreFeed> {
   try {
     const explore = await yt.music.getExplore();
     const quickLinks: ExploreQuickLink[] = [];
@@ -1043,14 +1181,6 @@ export async function getExploreFeed(): Promise<ExploreFeed> {
       sections,
     };
 
-    if (
-      newReleases.length > 0 ||
-      moods.length > 0 ||
-      trendingTracks.length > 0 ||
-      musicVideos.length > 0
-    ) {
-      exploreFeedCache = { value: feed, expiresAt: now + GRAPH_TTL_MS };
-    }
     return feed;
   } catch (err) {
     console.warn('Failed to fetch explore feed:', err);
@@ -1063,6 +1193,120 @@ export async function getExploreFeed(): Promise<ExploreFeed> {
       sections: [],
     };
   }
+}
+
+async function fetchGlobalExploreFeed(localFeed: ExploreFeed): Promise<ExploreFeed> {
+  try {
+    const chartSearch = await searchAll('Billboard Hot 100');
+    const chartId = chartSearch.playlists[0]?.id;
+    const chartPlaylist = chartId ? await getPlaylistDetails(chartId).catch(() => null) : null;
+    const globalTracks = (chartPlaylist?.tracks || []).slice(0, 32);
+
+    if (globalTracks.length === 0) {
+      return localFeed;
+    }
+
+    const primaryArtists: string[] = [];
+    const seenArtists = new Set<string>();
+    for (const t of globalTracks) {
+      const first = t.artist.split(/,|&|\bfeat\.?\b|\bft\.?\b/i)[0]?.trim();
+      if (!first) continue;
+      const lower = first.toLowerCase();
+      if (seenArtists.has(lower)) continue;
+      seenArtists.add(lower);
+      primaryArtists.push(first);
+      if (primaryArtists.length >= 5) break;
+    }
+
+    const artistSearches = await Promise.all(
+      primaryArtists.map((a) => searchAll(a).catch(() => null))
+    );
+
+    // Round-robin across artists so New albums & singles shows diverse Western/Global releases
+    const globalReleases: ExploreReleaseCard[] = [];
+    const seenReleaseIds = new Set<string>();
+    for (let round = 0; round < 3; round += 1) {
+      for (const res of artistSearches) {
+        const rel = res?.albums?.[round];
+        if (!rel || seenReleaseIds.has(rel.id)) continue;
+        seenReleaseIds.add(rel.id);
+        globalReleases.push(rel);
+      }
+    }
+
+    const trending = globalTracks.slice(0, 20);
+    const videos = globalTracks.slice(20, 32);
+
+    return {
+      quickLinks: localFeed.quickLinks,
+      newReleases: globalReleases.length > 0 ? globalReleases : localFeed.newReleases,
+      moods: localFeed.moods,
+      trendingTracks: trending,
+      musicVideos: videos.length > 0 ? videos : localFeed.musicVideos,
+      sections: [{ title: 'Trending', tracks: trending }],
+    };
+  } catch (err) {
+    console.warn('Global explore supplement failed, falling back to regional explore:', err);
+    return localFeed;
+  }
+}
+
+/**
+ * Live Explore Feed defaulting to Global (US) releases/charts, optionally blending
+ * a slice of local-region releases and trending tracks when user listening behavior favors local music.
+ */
+export async function getExploreFeed(options?: { localRatio?: number }): Promise<ExploreFeed> {
+  const now = Date.now();
+  const hasContent = (f: ExploreFeed) =>
+    f.newReleases.length > 0 ||
+    f.moods.length > 0 ||
+    f.trendingTracks.length > 0 ||
+    f.musicVideos.length > 0;
+
+  const getLocal = async (): Promise<ExploreFeed> => {
+    if (localExploreFeedCache && localExploreFeedCache.expiresAt > now) {
+      return localExploreFeedCache.value;
+    }
+    const feed = await fetchRawExploreFeed(await getInnertube());
+    if (hasContent(feed)) {
+      localExploreFeedCache = { value: feed, expiresAt: now + GRAPH_TTL_MS };
+    }
+    return feed;
+  };
+
+  const getGlobal = async (): Promise<ExploreFeed> => {
+    if (globalExploreFeedCache && globalExploreFeedCache.expiresAt > now) {
+      return globalExploreFeedCache.value;
+    }
+    const localFeed = await getLocal();
+    const feed = await fetchGlobalExploreFeed(localFeed);
+    if (hasContent(feed)) {
+      globalExploreFeedCache = { value: feed, expiresAt: now + GRAPH_TTL_MS };
+    }
+    return feed;
+  };
+
+  const localRatio = Math.max(0, Math.min(0.4, options?.localRatio ?? 0));
+  if (localRatio <= 0) {
+    return getGlobal();
+  }
+
+  const [globalFeed, localFeed] = await Promise.all([getGlobal(), getLocal()]);
+  return {
+    quickLinks: globalFeed.quickLinks.length > 0 ? globalFeed.quickLinks : localFeed.quickLinks,
+    newReleases: interleaveUnique(globalFeed.newReleases, localFeed.newReleases, (r) => r.id, localRatio),
+    moods: globalFeed.moods.length > 0 ? globalFeed.moods : localFeed.moods,
+    trendingTracks: interleaveUnique(globalFeed.trendingTracks, localFeed.trendingTracks, (t) => t.id, localRatio),
+    musicVideos: interleaveUnique(globalFeed.musicVideos, localFeed.musicVideos, (t) => t.id, localRatio),
+    sections: globalFeed.sections.map((sec, idx) =>
+      idx === 0 && localFeed.sections[0]
+        ? {
+            ...sec,
+            tracks: interleaveUnique(sec.tracks, localFeed.sections[0].tracks, (t) => t.id, localRatio),
+          }
+        : sec
+    ),
+  };
 }
 
 /** Browse a YouTube Music Explore subpage (New releases, Charts, Moods & genres, or a Mood category). */
@@ -1081,7 +1325,7 @@ export async function getExploreCategory(opts: {
   const hit = getFreshCached(categoryCache, cacheKey, now);
   if (hit) return hit.value;
 
-  const yt = await getInnertube();
+  const yt = await getGlobalInnertube();
   const raw = await yt.actions.execute('/browse', {
     browseId: cleanBrowseId,
     ...(cleanParams ? { params: cleanParams } : {}),
@@ -1134,6 +1378,38 @@ export async function getExploreCategory(opts: {
 
     if (shelfMoods.length > 0) moodGroups.push({ heading, items: shelfMoods });
     if (shelfPlaylists.length > 0) playlistShelves.push({ heading, items: shelfPlaylists });
+  }
+
+  if (cleanBrowseId === 'FEmusic_new_releases') {
+    const globalFeed = await getExploreFeed();
+    if (globalFeed.newReleases.length > 0) {
+      releases.splice(0, releases.length, ...globalFeed.newReleases);
+    }
+    if (globalFeed.trendingTracks.length > 0) {
+      tracks.splice(0, tracks.length, ...globalFeed.trendingTracks);
+    }
+  } else if (cleanBrowseId === 'FEmusic_charts') {
+    const [globalFeed, chartRes, popRes] = await Promise.all([
+      getExploreFeed(),
+      searchAll('Billboard Hot 100').catch(() => null),
+      searchAll('Global Top 50').catch(() => null),
+    ]);
+    const globalPlaylists: ExplorePlaylistCard[] = [];
+    const seenPl = new Set<string>();
+    for (const pl of [...(chartRes?.playlists || []).slice(0, 4), ...(popRes?.playlists || []).slice(0, 4)]) {
+      if (!pl?.id || seenPl.has(pl.id)) continue;
+      seenPl.add(pl.id);
+      globalPlaylists.push(pl);
+    }
+    if (globalPlaylists.length > 0) {
+      playlistShelves.splice(0, playlistShelves.length, {
+        heading: 'Global charts',
+        items: globalPlaylists,
+      });
+    }
+    if (globalFeed.trendingTracks.length > 0) {
+      tracks.splice(0, tracks.length, ...globalFeed.trendingTracks);
+    }
   }
 
   await enrichMissingDurations(tracks, 25);

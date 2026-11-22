@@ -14,7 +14,7 @@ import {
 import { toast } from '../../store/useToastStore';
 import { gridVariants, SPRING, SPRING_LAYOUT } from '../../utils/motion';
 import { MediaCard } from '../MediaCard';
-import { TrackArtwork, TrackRow, upgradeThumbnail } from '../TrackCard';
+import { PosterArt, TrackArtwork, TrackRow } from '../TrackCard';
 
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3';
 
@@ -25,54 +25,6 @@ const SEARCH_TABS: { id: SearchTab; label: string }[] = [
   { id: 'artists', label: 'Artists' },
   { id: 'playlists', label: 'Playlists' },
 ];
-
-const PosterArt: React.FC<{ src?: string; title: string; round?: boolean }> = ({
-  src,
-  title,
-  round = false,
-}) => {
-  const [broken, setBroken] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    setBroken(false);
-    setLoaded(false);
-  }, [src]);
-
-  if (!src || broken) {
-    return (
-      <div
-        className={`w-full h-full flex items-center justify-center bg-hover text-ink-2 text-lg font-bold select-none ${
-          round ? 'rounded-full' : ''
-        }`}
-      >
-        {title.slice(0, 2).toUpperCase()}
-      </div>
-    );
-  }
-
-  return (
-    <img
-      key={src}
-      ref={(el) => {
-        if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
-      }}
-      src={upgradeThumbnail(src, undefined, 'md')}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onLoad={() => setLoaded(true)}
-      onError={() => {
-        setLoaded(false);
-        setBroken(true);
-      }}
-      className={`w-full h-full object-cover transition-opacity duration-500 ${
-        loaded ? 'opacity-100' : 'opacity-0'
-      }`}
-    />
-  );
-};
 
 const RowsSkeleton: React.FC<{ count?: number }> = ({ count = 8 }) => (
   <div aria-busy="true" aria-label="Loading songs">

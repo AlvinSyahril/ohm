@@ -73,9 +73,11 @@ export const AlbumsView: React.FC = () => {
   }, [albums, filter, sort]);
 
   return (
-    <div className="px-6 pb-8">
-      <h1 className="text-3xl font-bold mb-1">Albums</h1>
-      <p className="text-sm text-ink-2 mb-5">
+    <div className="px-6 pt-2 pb-8">
+      <h1 className="text-3xl sm:text-[34px] font-bold tracking-[-0.03em] leading-[1.1]">
+        Albums
+      </h1>
+      <p className="text-sm text-ink-2 mt-1.5 mb-5">
         {visibleAlbums.length} {visibleAlbums.length === 1 ? 'release' : 'releases'}
         {filter.trim() ? ` matching "${filter.trim()}"` : ''}
       </p>

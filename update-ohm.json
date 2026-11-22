@@ -1,15 +1,15 @@
 {
   "app": "ohm",
-  "version": "0.2.0",
-  "releaseDate": "2026-11-19",
-  "downloadUrl": "https://github.com/AlvinSyahril/ohm/releases/download/v0.2.0/Ohm-Setup-0.2.0.exe",
-  "sha256": "29d293e630c12fe83bf24061ff12c5ab955e3344c844c1cf59193f1221f56ff5",
-  "releaseNotesUrl": "https://github.com/AlvinSyahril/ohm/releases/tag/v0.2.0",
+  "version": "0.2.1",
+  "releaseDate": "2026-11-22",
+  "downloadUrl": "https://github.com/AlvinSyahril/ohm/releases/download/v0.2.1/Ohm-Setup-0.2.1.exe",
+  "sha256": "6a367e6599b89d07b23c8f496b019d43ae3e810ebf9a1e13e721621fc07721d2",
+  "releaseNotesUrl": "https://github.com/AlvinSyahril/ohm/releases/tag/v0.2.1",
   "changelog": [
-    "Shareable Lyric Card Studio with Best Part hook finder and Obsidian Matte, Editorial Paper, and Cover Palette themes",
-    "Your Sound Receipt: weekly and all-time listening receipts from local playback stats",
-    "Discord Rich Presence for Electron with live play/pause timestamps and optional custom app ID",
-    "Smart Opus/AAC codec ranking, Pure Path filter bypass, live codec/bitrate readout, and Loudness Normalization",
-    "Smoother Stage/Lyrics animations, smaller initial JS bundle, and hardened updater & desktop stability"
+    "Global Explore & smart local blend across Explore, New releases, and Charts",
+    "Dynamic Song Radio for fresh queue exploration on repeated clicks",
+    "Real Artist portraits, letterbox thumbnail cropping, and unified library headers",
+    "Recently played time grouping, Queue Shuffle upcoming, and Undo toasts",
+    "Discord Rich Presence v2, unfocused low-latency mode, and Update/What's New pop-ups"
   ]
 }
