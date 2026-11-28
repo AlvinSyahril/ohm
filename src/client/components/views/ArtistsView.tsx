@@ -1,13 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, Mic2, Plus } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
-import { Track, usePlayerStore } from '../../store/usePlayerStore';
+import { usePlayerStore } from '../../store/usePlayerStore';
 import { toast } from '../../store/useToastStore';
 import { GLOBAL_TRENDING_TRACKS } from '../../utils/recommendationEngine';
 import { buildArtists, primaryArtist, trackCountLabel } from '../../utils/catalog';
-import { useArtistAvatar } from '../../hooks/useArtistAvatar';
-import { TrackArtwork } from '../TrackCard';
+import { ArtistAvatar } from '../TrackCard';
 import { MediaCard } from '../MediaCard';
 import { LibraryFilterBar, SortChoice } from '../LibraryFilterBar';
 import { gridVariants } from '../../utils/motion';
@@ -19,31 +18,6 @@ const SORT_OPTIONS: SortChoice<ArtistSort>[] = [
   { id: 'name', label: 'A–Z' },
   { id: 'tracks', label: 'Songs' },
 ];
-
-const ArtistAvatar: React.FC<{ name: string; fallbackTrack: Track }> = ({ name, fallbackTrack }) => {
-  const avatar = useArtistAvatar(name, fallbackTrack.artistId);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setFailed(false);
-  }, [avatar]);
-
-  if (!avatar || failed) {
-    return <TrackArtwork track={fallbackTrack} size="md" />;
-  }
-
-  return (
-    <img
-      src={avatar}
-      alt=""
-      referrerPolicy="no-referrer"
-      loading="lazy"
-      decoding="async"
-      className="w-full h-full object-cover"
-      onError={() => setFailed(true)}
-    />
-  );
-};
 
 export const ArtistsView: React.FC = () => {
   const {

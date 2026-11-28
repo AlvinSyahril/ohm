@@ -12,10 +12,10 @@ export const LATEST_RELEASE: ChangelogRelease = {
   version: APP_VERSION,
   label: 'Latest',
   items: [
-    'Global Explore & smart local blend: Explore, New releases, and Charts now default to Global/Western music and automatically weave in regional picks based on your listening.',
-    'Dynamic Song Radio: starting radio from the same song explores fresh tracks instead of repeating the same order.',
-    'Real Artist portraits & crisp thumbnails: Artists view loads real artist photos, and YouTube thumbnails crop out black letterbox bars cleanly.',
-    'Discord Rich Presence v2: shows album info cleanly, adds Download Ohm & Listen to Track buttons, and defaults to on.',
-    'Quality of life: Recently played time grouping, Queue Shuffle upcoming, Undo toast for Clear queue & Delete playlist, and paused background animations when unfocused.',
+    'Real Infinity Queue: background autoplay refills always fetch fresh recommendations with an 80-track exclusion memory so long listening sessions keep discovering new songs.',
+    'Audio timeout recovery & security: upstream stream timeouts automatically retry with a fresh client, and the local server restricts CORS to localhost/127.0.0.1.',
+    'Home & Queue UI polish: real Artist portraits on Home, card-snapped Related shelves, clean song titles, Queue-aware 2-column Selected cuts, uniform Next up controls, and top window hairline.',
+    'Playlist drag-to-reorder & lyric sync offset: drag tracks directly to reorder custom playlists, and nudge synced lyric timing (-0.5s / +0.5s) from the collapsible Sync control in Stage.',
+    'Discord RPC live status: About updates automatically when Discord opens or closes, with cleaner disconnect and error logging.',
   ],
 };

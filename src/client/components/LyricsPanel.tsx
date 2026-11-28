@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowDown, Check, Mic2, Music2, Share2, X } from 'lucide-react';
+import { ArrowDown, Check, Clock, Mic2, Music2, Share2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { EASE_OUT } from '../utils/motion';
@@ -29,6 +29,37 @@ const scrollLineInsideContainer = (container: HTMLElement | null, el: HTMLElemen
     container.scrollTop + (eRect.top - cRect.top) - container.clientHeight / 2 + eRect.height / 2;
   container.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
 };
+
+const LYRIC_OFFSETS_KEY = 'ohm_lyric_offsets';
+
+function loadLyricOffset(videoId?: string): number {
+  if (!videoId) return 0;
+  try {
+    const raw = localStorage.getItem(LYRIC_OFFSETS_KEY);
+    if (!raw) return 0;
+    const map = JSON.parse(raw) as Record<string, number>;
+    const val = map?.[videoId];
+    return typeof val === 'number' && Number.isFinite(val) ? val : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveLyricOffset(videoId: string, offsetSec: number): void {
+  try {
+    const raw = localStorage.getItem(LYRIC_OFFSETS_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+    if (Math.abs(offsetSec) < 0.01) {
+      delete map[videoId];
+    } else {
+      map[videoId] = Math.round(offsetSec * 10) / 10;
+    }
+    const entries = Object.entries(map).slice(-200);
+    localStorage.setItem(LYRIC_OFFSETS_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 const findActiveIndex = (lines: LyricLine[], currentMs: number): number => {
   let lo = 0;
@@ -64,6 +95,20 @@ export const LyricsPanel: React.FC = () => {
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [bestPartCursor, setBestPartCursor] = useState(0);
   const [cardModalOpen, setCardModalOpen] = useState(false);
+  const [syncOffset, setSyncOffset] = useState<number>(() => loadLyricOffset(currentTrack?.id));
+  const [syncOpen, setSyncOpen] = useState(false);
+
+  useEffect(() => {
+    setSyncOffset(loadLyricOffset(currentTrack?.id));
+    setSyncOpen(false);
+  }, [currentTrack?.id]);
+
+  const nudgeSync = (delta: number) => {
+    if (!currentTrack?.id) return;
+    const next = delta === 0 ? 0 : Math.max(-10, Math.min(10, Math.round((syncOffset + delta) * 10) / 10));
+    setSyncOffset(next);
+    saveLyricOffset(currentTrack.id, next);
+  };
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -124,8 +169,8 @@ export const LyricsPanel: React.FC = () => {
 
   const activeIdx = useMemo(() => {
     if (!payload || payload.kind !== 'synced') return -1;
-    return findActiveIndex(payload.lines, currentTime * 1000);
-  }, [payload, currentTime]);
+    return findActiveIndex(payload.lines, (currentTime + syncOffset) * 1000);
+  }, [payload, currentTime, syncOffset]);
 
   const selectedLines = useMemo(() => {
     if (!payload?.lines) return [];
@@ -367,20 +412,74 @@ export const LyricsPanel: React.FC = () => {
               </motion.button>
             </motion.div>
           ) : (
-            <motion.button
+            <motion.div
               key="share-trigger"
-              type="button"
-              whileTap={{ scale: 0.96 }}
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 4 }}
               transition={{ duration: 0.15, ease: EASE_OUT }}
-              onClick={enterSelectionMode}
-              className="h-7 px-2.5 rounded-md border border-line bg-transparent hover:bg-hover text-[11px] font-medium text-ink-2 hover:text-ink flex items-center gap-1.5 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              className="flex items-center gap-1.5 shrink-0"
             >
-              <Share2 className="w-3 h-3 text-accent" />
-              Share lyric
-            </motion.button>
+              {payload.kind === 'synced' &&
+                (syncOpen || syncOffset !== 0 ? (
+                  <div
+                    className="h-7 px-1 rounded-md border border-line bg-transparent flex items-center gap-0.5 text-[11px] text-ink-3 tabular-nums"
+                    title="Adjust lyric timing offset"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => nudgeSync(-0.5)}
+                      aria-label="Delay lyrics by 0.5 seconds"
+                      className="px-1.5 h-5 rounded-sm hover:bg-hover hover:text-ink transition-colors"
+                    >
+                      -0.5s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        nudgeSync(0);
+                        setSyncOpen(false);
+                      }}
+                      title="Reset and close lyric sync offset"
+                      className={`px-1 h-5 rounded-sm transition-colors ${
+                        syncOffset !== 0
+                          ? 'text-accent hover:bg-hover'
+                          : 'text-ink-2 hover:bg-hover hover:text-ink'
+                      }`}
+                    >
+                      {syncOffset > 0 ? `+${syncOffset.toFixed(1)}s` : `${syncOffset.toFixed(1)}s`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => nudgeSync(0.5)}
+                      aria-label="Advance lyrics by 0.5 seconds"
+                      className="px-1.5 h-5 rounded-sm hover:bg-hover hover:text-ink transition-colors"
+                    >
+                      +0.5s
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSyncOpen(true)}
+                    aria-label="Adjust lyric timing offset"
+                    title="Lyric sync offset"
+                    className="h-7 px-2 rounded-md border border-line bg-transparent hover:bg-hover text-[11px] font-medium text-ink-3 hover:text-ink inline-flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                  >
+                    <Clock className="w-3 h-3" />
+                    <span>Sync</span>
+                  </button>
+                ))}
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.96 }}
+                onClick={enterSelectionMode}
+                className="h-7 px-2.5 rounded-md border border-line bg-transparent hover:bg-hover text-[11px] font-medium text-ink-2 hover:text-ink flex items-center gap-1.5 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                <Share2 className="w-3 h-3 text-accent" />
+                Share lyric
+              </motion.button>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -414,7 +513,7 @@ export const LyricsPanel: React.FC = () => {
                   }
                   if (typeof line.timeMs === 'number') {
                     setManualScroll(false);
-                    seekTo(line.timeMs / 1000);
+                    seekTo(Math.max(0, line.timeMs / 1000 - syncOffset));
                   }
                 }}
                 className={`block w-full text-left text-xl sm:text-[25px] leading-[1.42] tracking-[-0.02em] font-bold border-l-2 px-3.5 py-1.5 origin-left transition-[color,opacity,background-color,border-color,transform] duration-200 ease-out active:scale-[0.992] focus:outline-none ${

@@ -14,10 +14,12 @@ import { GLOBAL_TRENDING_TRACKS } from '../../utils/recommendationEngine';
 import {
   buildHomeArtists,
   buildHomeCuts,
+  cleanTrackTitle,
   primaryArtist,
 } from '../../utils/catalog';
 import { ArtistLinks } from '../ArtistLinks';
 import {
+  ArtistAvatar,
   TrackArtwork,
   PlayingBars,
   formatTrackDuration,
@@ -74,11 +76,29 @@ const ShelfRail: React.FC<{
     setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 8);
   }, []);
 
+  const getCardStep = (el: HTMLDivElement): number => {
+    const first = el.firstElementChild as HTMLElement | null;
+    return first && first.offsetWidth > 0 ? first.offsetWidth + 12 : 198;
+  };
+
+  useEffect(() => {
+    const el = railRef.current;
+    if (!el) return;
+    el.scrollLeft = 0;
+    syncScrollBounds();
+  }, [title, syncScrollBounds]);
+
   useEffect(() => {
     const el = railRef.current;
     if (!el) return;
     syncScrollBounds();
-    const ro = new ResizeObserver(syncScrollBounds);
+    const ro = new ResizeObserver(() => {
+      if (el.scrollLeft > 0) {
+        const cardStep = getCardStep(el);
+        el.scrollLeft = Math.round(el.scrollLeft / cardStep) * cardStep;
+      }
+      syncScrollBounds();
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [children, syncScrollBounds]);
@@ -86,8 +106,13 @@ const ShelfRail: React.FC<{
   const step = (dir: -1 | 1) => {
     const el = railRef.current;
     if (!el) return;
-    const distance = Math.max(340, Math.round(el.clientWidth * 0.78));
-    el.scrollBy({ left: dir * distance, behavior: 'smooth' });
+    const cardStep = getCardStep(el);
+    const cardsPerPage = Math.max(1, Math.floor(el.clientWidth / cardStep));
+    const target = Math.max(
+      0,
+      Math.round((el.scrollLeft + dir * cardsPerPage * cardStep) / cardStep) * cardStep
+    );
+    el.scrollTo({ left: target, behavior: 'smooth' });
   };
 
   const navControls =
@@ -189,7 +214,7 @@ const RotationRow: React.FC<
                 isCurrent ? 'text-accent' : 'text-ink'
               }`}
             >
-              {track.title}
+              {cleanTrackTitle(track.title)}
             </span>
           </button>
           <div className="text-xs text-ink-3 truncate">
@@ -203,23 +228,25 @@ const RotationRow: React.FC<
         </div>
 
         <div className="flex items-center gap-0.5 shrink-0">
-          <HeartButton
-            track={track}
-            revealClass="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-            className="!w-7 !h-7"
-            iconClassName="w-3.5 h-3.5"
-          />
-          <button
-            type="button"
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setMenuCoords({ x: rect.right, y: rect.bottom + 4, alignRight: true });
-            }}
-            aria-label={`More actions for ${track.title}`}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
-          >
-            <MoreHorizontal className="w-3.5 h-3.5" />
-          </button>
+          <div className="hidden group-hover:flex group-focus-within:flex items-center gap-0.5">
+            <HeartButton
+              track={track}
+              revealClass="opacity-100"
+              className="!w-7 !h-7"
+              iconClassName="w-3.5 h-3.5"
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setMenuCoords({ x: rect.right, y: rect.bottom + 4, alignRight: true });
+              }}
+              aria-label={`More actions for ${track.title}`}
+              className="w-7 h-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink transition-opacity"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
+          </div>
           <span className="w-9 text-right text-[11px] text-ink-3 tabular-nums">
             {formatTrackDuration(track.duration)}
           </span>
@@ -287,7 +314,7 @@ const CompactCutTile: React.FC<HomeTrackItemProps> = ({
                 isCurrent ? 'text-accent' : 'text-ink'
               }`}
             >
-              {track.title}
+              {cleanTrackTitle(track.title)}
             </span>
           </button>
           <div className="text-xs text-ink-2 mt-0.5 truncate">
@@ -314,7 +341,7 @@ const CompactCutTile: React.FC<HomeTrackItemProps> = ({
               setMenuCoords({ x: rect.right, y: rect.bottom + 4, alignRight: true });
             }}
             aria-label={`More actions for ${track.title}`}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
+            className="w-7 h-7 rounded-full hidden group-hover:flex group-focus-within:flex items-center justify-center text-ink-2 hover:text-ink transition-opacity"
           >
             <MoreHorizontal className="w-3.5 h-3.5" />
           </button>
@@ -351,6 +378,7 @@ export const BrowseView: React.FC = () => {
     setActiveTab,
     openArtist,
     openCollection,
+    isQueueOpen,
   } = usePlayerStore(
     useShallow((s) => ({
       currentTrack: s.currentTrack,
@@ -369,6 +397,7 @@ export const BrowseView: React.FC = () => {
       setActiveTab: s.setActiveTab,
       openArtist: s.openArtist,
       openCollection: s.openCollection,
+      isQueueOpen: s.isQueueOpen,
     }))
   );
 
@@ -659,7 +688,11 @@ export const BrowseView: React.FC = () => {
             title="Selected cuts"
             action={{ label: 'View all', onClick: () => setActiveTab('songs') }}
           />
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-1">
+          <div
+            className={`grid grid-cols-1 ${
+              isQueueOpen ? 'lg:grid-cols-2 2xl:grid-cols-3' : 'md:grid-cols-2 xl:grid-cols-3'
+            } gap-x-4 gap-y-1`}
+          >
             {popular.map((track) => (
               <CompactCutTile
                 key={track.id}
@@ -679,7 +712,7 @@ export const BrowseView: React.FC = () => {
                 key={track.id}
                 track={track}
                 artwork={<TrackArtwork track={track} size="md" />}
-                title={track.title}
+                title={cleanTrackTitle(track.title)}
                 subtitle={<ArtistLinks artist={track.artist} artistId={track.artistId} />}
                 isPlaying={currentTrack?.id === track.id && isPlaying}
                 onPlay={() => playFrom(track, recommended)}
@@ -697,7 +730,7 @@ export const BrowseView: React.FC = () => {
             <MediaCard
               key={artist.name}
               round
-              artwork={<TrackArtwork track={artist.tracks[0]} size="md" />}
+              artwork={<ArtistAvatar name={artist.name} fallbackTrack={artist.tracks[0]} />}
               title={artist.name}
               subtitle="Artist"
               isPlaying={
@@ -727,7 +760,7 @@ export const BrowseView: React.FC = () => {
                   track={track}
                   aspect={isVideoShelf ? 'video' : 'square'}
                   artwork={<TrackArtwork track={track} size="md" />}
-                  title={track.title}
+                  title={cleanTrackTitle(track.title)}
                   subtitle={<ArtistLinks artist={track.artist} artistId={track.artistId} />}
                   isPlaying={currentTrack?.id === track.id && isPlaying}
                   onPlay={() => playFrom(track, section.tracks)}

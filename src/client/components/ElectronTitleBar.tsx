@@ -7,9 +7,15 @@ import { isDesktopApp } from '../lib/desktop';
  * Renders nothing in normal web browsers.
  */
 export const ElectronTitleBar: React.FC = () => {
-  if (!isDesktopApp()) return null;
+  const showPreview =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('electron') === '1';
+  if (!isDesktopApp() && !showPreview) return null;
 
   return (
-    <div className="electron-drag h-8 shrink-0 bg-base pr-[144px] select-none" aria-hidden />
+    <div
+      className="electron-drag h-8 shrink-0 bg-base border-b border-line pr-[144px] select-none"
+      aria-hidden
+    />
   );
 };

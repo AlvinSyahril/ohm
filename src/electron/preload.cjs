@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('ohmDesktop', {
   openExternal: (targetKey) => ipcRenderer.invoke('app:open-external', targetKey),
   setDiscordPresence: (payload) => ipcRenderer.invoke('discord:update', payload),
   getDiscordStatus: () => ipcRenderer.invoke('discord:status'),
+  onDiscordStatus: (cb) => subscribe('discord:status', cb),
   onUpdateStatus: (cb) => subscribe('updater:status', cb),
   onOpenAbout: (cb) => subscribe('app:open-about', cb),
   onMediaAction: (cb) => subscribe('tray:media', cb),

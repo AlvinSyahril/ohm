@@ -3,6 +3,7 @@ import { audioEngine, EQ_PRESETS, EqBands, EqPresetId } from '../audio/audioEngi
 import { DesktopUpdateStatus, type DiscordRpcStatus } from '../lib/desktop';
 import { GLOBAL_TRENDING_TRACKS } from '../utils/recommendationEngine';
 import { appendPlayEvent, loadPlayEvents, type PlayEvent } from '../utils/playStats';
+import { cleanTrackTitle } from '../utils/catalog';
 
 let lastRecordedPlaySession = -1;
 let playSessionSeq = 0;
@@ -308,12 +309,18 @@ interface PlayerState {
   fetchExploreFeed: () => Promise<void>;
 }
 
-const isValidTrack = (t: unknown): t is Track =>
-  !!t &&
-  typeof t === 'object' &&
-  typeof (t as Track).id === 'string' &&
-  typeof (t as Track).title === 'string' &&
-  typeof (t as Track).artist === 'string';
+const isValidTrack = (t: unknown): t is Track => {
+  const ok =
+    !!t &&
+    typeof t === 'object' &&
+    typeof (t as Track).id === 'string' &&
+    typeof (t as Track).title === 'string' &&
+    typeof (t as Track).artist === 'string';
+  if (ok) {
+    (t as Track).title = cleanTrackTitle((t as Track).title);
+  }
+  return ok;
+};
 
 const loadFavorites = (): Track[] => {
   try {
@@ -577,8 +584,8 @@ function rememberRadioServed(ids: string[]) {
     if (idx !== -1) recentRadioServedIds.splice(idx, 1);
     recentRadioServedIds.push(id);
   }
-  if (recentRadioServedIds.length > 40) {
-    recentRadioServedIds.splice(0, recentRadioServedIds.length - 40);
+  if (recentRadioServedIds.length > 80) {
+    recentRadioServedIds.splice(0, recentRadioServedIds.length - 80);
   }
 }
 
@@ -590,7 +597,7 @@ async function fetchRadioCandidates(
   const params = new URLSearchParams();
   if (fresh) params.set('fresh', '1');
   if (excludeIds.size > 0) {
-    params.set('exclude', Array.from(excludeIds).slice(-30).join(','));
+    params.set('exclude', Array.from(excludeIds).slice(-60).join(','));
   }
   const qs = params.toString();
   const res = await fetch(`/api/radio/${encodeURIComponent(seedId)}${qs ? `?${qs}` : ''}`);
@@ -608,7 +615,7 @@ function seedQueueInBackground(
   set: (partial: Partial<PlayerState> | ((s: PlayerState) => Partial<PlayerState>)) => void,
   get: () => PlayerState
 ) {
-  fetchRadioCandidates(seedId, exclude)
+  fetchRadioCandidates(seedId, exclude, true)
     .then((candidates) => {
       if (apSeq !== autoplaySeq || !get().autoplay || candidates.length === 0) return;
       set((s) => {
@@ -617,7 +624,9 @@ function seedQueueInBackground(
           ...s.queue.map((q) => q.id),
         ]);
         const fresh = candidates.filter((c) => !existing.has(c.id));
-        return fresh.length > 0 ? { queue: [...s.queue, ...fresh] } : {};
+        if (fresh.length === 0) return {};
+        rememberRadioServed(fresh.map((c) => c.id));
+        return { queue: [...s.queue, ...fresh] };
       });
     })
     .catch(() => {});
@@ -1372,10 +1381,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     // Silently seed Infinity Queue Up Next when playing a single song (or short context)
     if (autoplay && nextQueue.length <= INFINITY_LOW_WATER) {
       const seed = nextQueue[nextQueue.length - 1] ?? track;
+      rememberRadioServed([track.id]);
       const exclude = new Set<string>([
         track.id,
         ...nextQueue.map((t) => t.id),
-        ...updatedHistory.slice(0, 15).map((t) => t.id),
+        ...updatedHistory.map((t) => t.id),
+        ...recentRadioServedIds,
       ]);
       seedQueueInBackground(seed.id, exclude, apSeq, set, get);
     }
@@ -1472,15 +1483,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
       }
       if (autoplay && currentTrack) {
+        rememberRadioServed([currentTrack.id]);
         const exclude = new Set<string>([
           currentTrack.id,
-          ...history.slice(0, 15).map((t) => t.id),
+          ...history.map((t) => t.id),
+          ...recentRadioServedIds,
         ]);
-        fetchRadioCandidates(currentTrack.id, exclude)
+        fetchRadioCandidates(currentTrack.id, exclude, true)
           .then((candidates) => {
             if (apSeq !== autoplaySeq) return;
             if (candidates.length > 0) {
-              get().playTrack(candidates[0], []);
+              rememberRadioServed(candidates.map((c) => c.id));
+              get().playTrack(candidates[0], candidates.slice(1));
             } else {
               set({ isPlaying: false });
             }
@@ -1518,10 +1532,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     // Proactive rolling Infinity Queue refill before queue hits empty
     if (autoplay && repeatMode === 'off' && remainingQueue.length <= INFINITY_LOW_WATER) {
       const tailSeed = remainingQueue[remainingQueue.length - 1] ?? next;
+      rememberRadioServed([next.id]);
       const exclude = new Set<string>([
         next.id,
         ...remainingQueue.map((q) => q.id),
-        ...updatedHistory.slice(0, 15).map((h) => h.id),
+        ...updatedHistory.map((h) => h.id),
+        ...recentRadioServedIds,
       ]);
       seedQueueInBackground(tailSeed.id, exclude, apSeq, set, get);
     }

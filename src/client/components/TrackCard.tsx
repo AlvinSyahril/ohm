@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Play, Pause, MoreHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Track, usePlayerStore } from '../store/usePlayerStore';
+import { useArtistAvatar } from '../hooks/useArtistAvatar';
 import { primaryArtist } from '../utils/catalog';
 import { ArtistLinks } from './ArtistLinks';
 import { HeartButton } from './HeartButton';
@@ -277,6 +278,37 @@ export const PlayingBars: React.FC<{ active: boolean; className?: string }> = ({
     <span className={`w-[3px] bg-accent ${active ? 'eq-bar-3' : 'h-[55%]'}`} />
   </div>
 );
+
+/**
+ * Shared circular/square artist portrait with automatic fallback to track artwork.
+ */
+export const ArtistAvatar: React.FC<{ name: string; fallbackTrack: Track }> = ({
+  name,
+  fallbackTrack,
+}) => {
+  const avatar = useArtistAvatar(name, fallbackTrack.artistId);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [avatar]);
+
+  if (!avatar || failed) {
+    return <TrackArtwork track={fallbackTrack} size="md" />;
+  }
+
+  return (
+    <img
+      src={avatar}
+      alt=""
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      decoding="async"
+      className="w-full h-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+};
 
 interface TrackRowProps {
   track: Track;

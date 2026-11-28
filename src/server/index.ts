@@ -73,7 +73,22 @@ export interface CreateAppOptions {
 
 export function createApp(options: CreateAppOptions = {}) {
   const app = express();
-  app.use(cors());
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        try {
+          const url = new URL(origin);
+          if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+            return callback(null, true);
+          }
+        } catch {
+          // Invalid origin header
+        }
+        callback(null, false);
+      },
+    })
+  );
   app.use(express.json({ limit: '16kb' }));
 
 // Health check endpoint
@@ -146,13 +161,13 @@ app.get('/api/radio/:videoId', async (req: Request, res: Response) => {
   }
   try {
     const fresh = req.query.fresh === '1' || req.query.fresh === 'true';
-    const rawExclude = queryString(req.query.exclude, 700);
+    const rawExclude = queryString(req.query.exclude, 800);
     const excludeIds = new Set<string>(
       rawExclude
         .split(',')
         .map((id) => id.trim())
         .filter((id) => VIDEO_ID_RE.test(id))
-        .slice(0, 40)
+        .slice(0, 60)
     );
     const tracks = await getRadioTracks(videoId, { fresh, excludeIds });
     res.json({ seedVideoId: videoId, count: tracks.length, tracks });

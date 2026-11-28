@@ -62,6 +62,7 @@ export interface OhmDesktopBridge {
   openExternal: (targetKey: DesktopExternalTarget) => Promise<{ ok: boolean; error?: string }>;
   setDiscordPresence: (payload: DiscordPresencePayload) => Promise<DiscordRpcStatus>;
   getDiscordStatus: () => Promise<DiscordRpcStatus>;
+  onDiscordStatus: (cb: (status: DiscordRpcStatus) => void) => () => void;
   onUpdateStatus: (cb: (status: DesktopUpdateStatus) => void) => () => void;
   onOpenAbout: (cb: () => void) => () => void;
   onMediaAction: (cb: (action: 'toggle' | 'next' | 'prev') => void) => () => void;

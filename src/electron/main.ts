@@ -223,6 +223,12 @@ function registerIpc() {
   });
 
   ipcMain.handle('discord:status', () => discordRpc.getStatus());
+
+  discordRpc.setStatusListener((status) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('discord:status', status);
+    }
+  });
 }
 
 const DESKTOP_DEFAULT_PORT = 45173;

@@ -67,6 +67,9 @@ export const DesktopBridge: React.FC = () => {
       });
 
     const unsubStatus = desktop.onUpdateStatus(handleStatus);
+    const unsubDiscord = desktop.onDiscordStatus?.((status) => {
+      usePlayerStore.getState().setDiscordRpcStatus(status);
+    });
     const unsubAbout = desktop.onOpenAbout(() => {
       usePlayerStore.getState().setAboutOpen(true);
     });
@@ -79,6 +82,7 @@ export const DesktopBridge: React.FC = () => {
 
     return () => {
       unsubStatus();
+      unsubDiscord?.();
       unsubAbout();
       unsubMedia();
     };

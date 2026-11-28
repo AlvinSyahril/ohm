@@ -408,17 +408,18 @@ async function runPaginatedSearch<T extends { id: string }>(opts: {
   offset: number;
   initialPages: number;
   morePages: number;
+  global?: boolean;
   initSearch: (yt: Innertube, q: string) => Promise<{ items: any[]; cursor: any }>;
   extractContItems: (page: any) => any[];
   parseItem: (raw: any) => T | null;
 }): Promise<PaginatedItemsResult<T>> {
   const cleanQuery = opts.query.trim();
-  const cacheKey = cleanQuery.toLowerCase();
+  const cacheKey = `${opts.global ? 'global:' : ''}${cleanQuery.toLowerCase()}`;
   const now = Date.now();
 
   let session = getFreshCached(opts.cache, cacheKey, now);
   if (!session) {
-    const yt = await getInnertube();
+    const yt = opts.global ? await getGlobalInnertube() : await getInnertube();
     const items: T[] = [];
     const seenIds = new Set<string>();
     const first = await opts.initSearch(yt, cleanQuery);
@@ -476,7 +477,8 @@ export async function searchTracksPaginated(
   query: string,
   offset = 0,
   initialPages = 3,
-  morePages = 2
+  morePages = 2,
+  global = false
 ): Promise<PaginatedSearchResult> {
   const result = await runPaginatedSearch<TrackMetadata>({
     cache: searchSongCache,
@@ -484,6 +486,7 @@ export async function searchTracksPaginated(
     offset,
     initialPages,
     morePages,
+    global,
     initSearch: async (yt, q) => {
       const sr = await yt.music.search(q, { type: 'song' });
       const songItems = sr?.songs?.contents || [];
@@ -523,7 +526,8 @@ export async function searchAlbumsPaginated(
   query: string,
   offset = 0,
   initialPages = 1,
-  morePages = 1
+  morePages = 1,
+  global = false
 ): Promise<PaginatedItemsResult<ExploreReleaseCard>> {
   return runPaginatedSearch<ExploreReleaseCard>({
     cache: searchAlbumCache,
@@ -531,6 +535,7 @@ export async function searchAlbumsPaginated(
     offset,
     initialPages,
     morePages,
+    global,
     initSearch: async (yt, q) => {
       const sr = await yt.music.search(q, { type: 'album' });
       return { items: (sr as any)?.albums?.contents || [], cursor: sr };
@@ -545,7 +550,8 @@ export async function searchArtistsPaginated(
   query: string,
   offset = 0,
   initialPages = 1,
-  morePages = 1
+  morePages = 1,
+  global = false
 ): Promise<PaginatedItemsResult<RelatedArtist>> {
   return runPaginatedSearch<RelatedArtist>({
     cache: searchArtistCache,
@@ -553,6 +559,7 @@ export async function searchArtistsPaginated(
     offset,
     initialPages,
     morePages,
+    global,
     initSearch: async (yt, q) => {
       const sr = await yt.music.search(q, { type: 'artist' });
       return { items: (sr as any)?.artists?.contents || [], cursor: sr };
@@ -567,7 +574,8 @@ export async function searchPlaylistsPaginated(
   query: string,
   offset = 0,
   initialPages = 1,
-  morePages = 1
+  morePages = 1,
+  global = false
 ): Promise<PaginatedItemsResult<ExplorePlaylistCard>> {
   return runPaginatedSearch<ExplorePlaylistCard>({
     cache: searchPlaylistCache,
@@ -575,6 +583,7 @@ export async function searchPlaylistsPaginated(
     offset,
     initialPages,
     morePages,
+    global,
     initSearch: async (yt, q) => {
       const sr = await yt.music.search(q, { type: 'playlist' });
       return { items: (sr as any)?.playlists?.contents || [], cursor: sr };
@@ -590,32 +599,36 @@ export async function searchPlaylistsPaginated(
  * categorized Songs (with full durations), Albums, Artists, and Playlists,
  * while priming each tab's cache for zero-wait tab switching.
  */
-export async function searchAll(query: string): Promise<AllSearchResult> {
+export async function searchAll(
+  query: string,
+  opts?: { global?: boolean }
+): Promise<AllSearchResult> {
   const cleanQuery = query.trim();
-  const cacheKey = cleanQuery.toLowerCase();
+  const cacheKey = `${opts?.global ? 'global:' : ''}${cleanQuery.toLowerCase()}`;
   const now = Date.now();
   const hit = getFreshCached(searchAllCache, cacheKey, now);
   if (hit) return hit.value;
 
-  const yt = await getInnertube();
+  const isGlobal = Boolean(opts?.global);
+  const yt = isGlobal ? await getGlobalInnertube() : await getInnertube();
   const [rawAll, songRes, albumRes, artistRes, playlistRes] = await Promise.all([
     yt.music.search(cleanQuery).catch(() => null),
-    searchTracksPaginated(cleanQuery, 0, 1, 1).catch(() => ({
+    searchTracksPaginated(cleanQuery, 0, 1, 1, isGlobal).catch(() => ({
       tracks: [] as TrackMetadata[],
       hasMore: false,
       totalLoaded: 0,
     })),
-    searchAlbumsPaginated(cleanQuery, 0, 1, 1).catch(() => ({
+    searchAlbumsPaginated(cleanQuery, 0, 1, 1, isGlobal).catch(() => ({
       items: [] as ExploreReleaseCard[],
       hasMore: false,
       totalLoaded: 0,
     })),
-    searchArtistsPaginated(cleanQuery, 0, 1, 1).catch(() => ({
+    searchArtistsPaginated(cleanQuery, 0, 1, 1, isGlobal).catch(() => ({
       items: [] as RelatedArtist[],
       hasMore: false,
       totalLoaded: 0,
     })),
-    searchPlaylistsPaginated(cleanQuery, 0, 1, 1).catch(() => ({
+    searchPlaylistsPaginated(cleanQuery, 0, 1, 1, isGlobal).catch(() => ({
       items: [] as ExplorePlaylistCard[],
       hasMore: false,
       totalLoaded: 0,
@@ -1197,7 +1210,7 @@ async function fetchRawExploreFeed(yt: Innertube): Promise<ExploreFeed> {
 
 async function fetchGlobalExploreFeed(localFeed: ExploreFeed): Promise<ExploreFeed> {
   try {
-    const chartSearch = await searchAll('Billboard Hot 100');
+    const chartSearch = await searchAll('Billboard Hot 100', { global: true });
     const chartId = chartSearch.playlists[0]?.id;
     const chartPlaylist = chartId ? await getPlaylistDetails(chartId).catch(() => null) : null;
     const globalTracks = (chartPlaylist?.tracks || []).slice(0, 32);
@@ -1219,7 +1232,7 @@ async function fetchGlobalExploreFeed(localFeed: ExploreFeed): Promise<ExploreFe
     }
 
     const artistSearches = await Promise.all(
-      primaryArtists.map((a) => searchAll(a).catch(() => null))
+      primaryArtists.map((a) => searchAll(a, { global: true }).catch(() => null))
     );
 
     // Round-robin across artists so New albums & singles shows diverse Western/Global releases
@@ -1326,15 +1339,22 @@ export async function getExploreCategory(opts: {
   if (hit) return hit.value;
 
   const yt = await getGlobalInnertube();
-  const raw = await yt.actions.execute('/browse', {
-    browseId: cleanBrowseId,
-    ...(cleanParams ? { params: cleanParams } : {}),
-    client: 'YTMUSIC',
-  });
-  const page = Parser.parseResponse((raw as any).data);
+  let page: any = null;
+  try {
+    const raw = await yt.actions.execute('/browse', {
+      browseId: cleanBrowseId,
+      ...(cleanParams ? { params: cleanParams } : {}),
+      client: 'YTMUSIC',
+    });
+    page = Parser.parseResponse((raw as any).data);
+  } catch (err) {
+    if (cleanBrowseId !== 'FEmusic_new_releases' && cleanBrowseId !== 'FEmusic_charts') {
+      throw err;
+    }
+  }
   const headerTitle =
-    readText((page.header as any)?.title) || opts.title?.trim() || 'Explore';
-  const sectionList = page.contents_memo?.getType(YTNodes.SectionList)?.[0];
+    readText((page?.header as any)?.title) || opts.title?.trim() || 'Explore';
+  const sectionList = page?.contents_memo?.getType(YTNodes.SectionList)?.[0];
 
   const playlistShelves: { heading: string; items: ExplorePlaylistCard[] }[] = [];
   const releases: ExploreReleaseCard[] = [];
@@ -1391,8 +1411,8 @@ export async function getExploreCategory(opts: {
   } else if (cleanBrowseId === 'FEmusic_charts') {
     const [globalFeed, chartRes, popRes] = await Promise.all([
       getExploreFeed(),
-      searchAll('Billboard Hot 100').catch(() => null),
-      searchAll('Global Top 50').catch(() => null),
+      searchAll('Billboard Hot 100', { global: true }).catch(() => null),
+      searchAll('Global Top 50', { global: true }).catch(() => null),
     ]);
     const globalPlaylists: ExplorePlaylistCard[] = [];
     const seenPl = new Set<string>();
@@ -1425,12 +1445,20 @@ export async function getExploreCategory(opts: {
     moodGroups,
   };
 
-  setBoundedCache(
-    categoryCache,
-    cacheKey,
-    { value: data, expiresAt: now + GRAPH_TTL_MS },
-    MAX_GRAPH_CACHE
-  );
+  if (
+    releases.length > 0 ||
+    tracks.length > 0 ||
+    playlistShelves.length > 0 ||
+    artists.length > 0 ||
+    moodGroups.length > 0
+  ) {
+    setBoundedCache(
+      categoryCache,
+      cacheKey,
+      { value: data, expiresAt: now + GRAPH_TTL_MS },
+      MAX_GRAPH_CACHE
+    );
+  }
   return data;
 }
 
@@ -1610,9 +1638,17 @@ export async function getAudioStream(
     return { response, streamInfo };
   };
 
-  let { response } = await attemptFetch(false);
+  let response: Response | null = null;
+  try {
+    response = (await attemptFetch(false)).response;
+  } catch {
+    streamUrlCache.delete(videoId);
+    response = null;
+  }
 
-  if (!response.ok && response.status !== 206) {
+  if (!response || (!response.ok && response.status !== 206)) {
+    await response?.body?.cancel().catch(() => {});
+    streamUrlCache.delete(videoId);
     const retry = await attemptFetch(true);
     response = retry.response;
   }

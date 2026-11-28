@@ -86,6 +86,8 @@ export const SongsView: React.FC = () => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
   const [hydratedAlbum, setHydratedAlbum] = useState<{
     tracks: Track[];
     artist?: string;
@@ -666,22 +668,61 @@ export const SongsView: React.FC = () => {
             ));
           })()
         ) : (
-          displayTracks.map((track, i) => (
-            <TrackRow
-              key={`${track.id}-${i}`}
-              track={track}
-              index={i}
-              contextQueue={displayTracks}
-              onMoveUp={
-                canReorder && i > 0 ? () => reorderPlaylistTrack(playlist!.id, i, i - 1) : undefined
-              }
-              onMoveDown={
-                canReorder && i < displayTracks.length - 1
-                  ? () => reorderPlaylistTrack(playlist!.id, i, i + 1)
-                  : undefined
-              }
-            />
-          ))
+          displayTracks.map((track, i) => {
+            const isDropBefore = canReorder && dragIdx !== null && overIdx === i && dragIdx > i;
+            const isDropAfter = canReorder && dragIdx !== null && overIdx === i && dragIdx < i;
+            const rowNode = (
+              <TrackRow
+                key={`${track.id}-${i}`}
+                track={track}
+                index={i}
+                contextQueue={displayTracks}
+                onMoveUp={
+                  canReorder && i > 0 ? () => reorderPlaylistTrack(playlist!.id, i, i - 1) : undefined
+                }
+                onMoveDown={
+                  canReorder && i < displayTracks.length - 1
+                    ? () => reorderPlaylistTrack(playlist!.id, i, i + 1)
+                    : undefined
+                }
+              />
+            );
+            if (!canReorder) return rowNode;
+            return (
+              <div
+                key={`${track.id}-${i}`}
+                draggable
+                onDragStart={(e) => {
+                  setDragIdx(i);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', String(i));
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (overIdx !== i) setOverIdx(i);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragIdx !== null && dragIdx !== i) {
+                    reorderPlaylistTrack(playlist!.id, dragIdx, i);
+                  }
+                  setDragIdx(null);
+                  setOverIdx(null);
+                }}
+                onDragEnd={() => {
+                  setDragIdx(null);
+                  setOverIdx(null);
+                }}
+                className={`rounded-md transition-opacity ${
+                  dragIdx === i ? 'opacity-40' : ''
+                } ${isDropBefore ? 'border-t-2 border-accent' : ''} ${
+                  isDropAfter ? 'border-b-2 border-accent' : ''
+                }`}
+              >
+                {rowNode}
+              </div>
+            );
+          })
         )}
       </div>
     </div>

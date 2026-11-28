@@ -1,6 +1,7 @@
 import net from 'node:net';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { logError } from '../server/logger.js';
 
 export type DiscordRpcConnectionStatus =
   | 'disabled'
@@ -69,6 +70,15 @@ export class DiscordRpcClient {
   private incomingBuffer = Buffer.alloc(0);
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connectGen = 0;
+  private onStatusChange?: (status: DiscordRpcConnectionStatus) => void;
+
+  public setStatusListener(listener: (status: DiscordRpcConnectionStatus) => void): void {
+    this.onStatusChange = listener;
+  }
+
+  private emitStatus(): void {
+    this.onStatusChange?.(this.getStatus());
+  }
 
   public getStatus(): DiscordRpcConnectionStatus {
     if (!this.enabled) return 'disabled';
@@ -101,11 +111,12 @@ export class DiscordRpcClient {
       return 'needs_client_id';
     }
 
+    const wasReady = this.ready;
     if (!this.socket && !this.connecting) {
       await this.connect();
     }
 
-    if (this.ready && this.socket) {
+    if (wasReady && this.ready && this.socket) {
       this.sendActivity();
     }
 
@@ -119,23 +130,43 @@ export class DiscordRpcClient {
       this.reconnectTimer = null;
     }
     if (this.ready && this.socket) {
+      const sock = this.socket;
+      this.socket = null;
+      this.ready = false;
+      this.connecting = false;
+      this.incomingBuffer = Buffer.alloc(0);
       try {
-        this.socket.write(
+        sock.removeAllListeners();
+        sock.write(
           encodeFrame(OP_FRAME, {
             cmd: 'SET_ACTIVITY',
             args: { pid: process.pid, activity: null },
             nonce: crypto.randomUUID(),
           })
         );
-        this.socket.write(encodeFrame(OP_CLOSE, {}));
+        sock.end(encodeFrame(OP_CLOSE, {}));
+        setTimeout(() => {
+          try {
+            sock.destroy();
+          } catch {
+            // Ignore cleanup errors
+          }
+        }, 150).unref?.();
       } catch {
-        // Ignore write errors on shutdown
+        try {
+          sock.destroy();
+        } catch {
+          // Ignore cleanup errors
+        }
       }
+      this.emitStatus();
+      return;
     }
     this.destroySocket();
   }
 
   private destroySocket(): void {
+    const wasReady = this.ready;
     this.ready = false;
     this.connecting = false;
     this.incomingBuffer = Buffer.alloc(0);
@@ -147,6 +178,9 @@ export class DiscordRpcClient {
         // Ignore socket destroy errors
       }
       this.socket = null;
+    }
+    if (wasReady) {
+      this.emitStatus();
     }
   }
 
@@ -268,6 +302,11 @@ export class DiscordRpcClient {
     while (this.incomingBuffer.length >= 8) {
       const op = this.incomingBuffer.readUInt32LE(0);
       const len = this.incomingBuffer.readUInt32LE(4);
+      if (len > 1_048_576) {
+        this.destroySocket();
+        onClose();
+        return;
+      }
       if (this.incomingBuffer.length < 8 + len) break;
 
       const rawJson = this.incomingBuffer.subarray(8, 8 + len).toString('utf8');
@@ -281,11 +320,23 @@ export class DiscordRpcClient {
 
       if (op === OP_FRAME) {
         try {
-          const msg = JSON.parse(rawJson) as { cmd?: string; evt?: string };
+          const msg = JSON.parse(rawJson) as {
+            cmd?: string;
+            evt?: string;
+            data?: { message?: string; code?: number };
+          };
           if (msg.cmd === 'DISPATCH' && msg.evt === 'READY') {
             this.ready = true;
+            this.emitStatus();
             onReady();
             this.sendActivity();
+          } else if (msg.evt === 'ERROR') {
+            logError(
+              'electron',
+              'discord-rpc',
+              msg.data?.message || 'Discord IPC error frame',
+              { code: msg.data?.code }
+            );
           }
         } catch {
           // Ignore malformed RPC frames

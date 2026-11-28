@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, GripVertical, ListPlus, MoreHorizontal, Shuffle } from 'lucide-react';
+import { X, GripVertical, ListPlus, MoreHorizontal, Shuffle, Trash2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Track, usePlayerStore } from '../store/usePlayerStore';
 import { toast } from '../store/useToastStore';
@@ -183,7 +183,7 @@ export const QueueDrawer: React.FC = () => {
                       <div className="flex items-center justify-between px-3 mb-2 gap-2">
                         <h3 className="text-sm font-bold text-ink-2">Next up</h3>
                         {(queue.length > 0 || currentTrack) && (
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
                             <button
                               onClick={() => {
                                 const savedName = saveQueueAsPlaylist();
@@ -193,7 +193,7 @@ export const QueueDrawer: React.FC = () => {
                                 }
                               }}
                               title="Save queue as playlist"
-                              className="inline-flex items-center gap-1 text-xs font-medium text-ink-2 hover:text-ink transition-colors"
+                              className="inline-flex items-center gap-1 px-2 h-6 rounded-sm text-xs font-medium text-ink-2 hover:text-ink hover:bg-hover transition-colors"
                             >
                               <ListPlus className="w-3.5 h-3.5" />
                               Save
@@ -205,7 +205,7 @@ export const QueueDrawer: React.FC = () => {
                                   toast('Shuffled upcoming tracks');
                                 }}
                                 title="Shuffle upcoming"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-ink-2 hover:text-ink transition-colors"
+                                className="inline-flex items-center gap-1 px-2 h-6 rounded-sm text-xs font-medium text-ink-2 hover:text-ink hover:bg-hover transition-colors"
                               >
                                 <Shuffle className="w-3.5 h-3.5" />
                                 Shuffle
@@ -221,8 +221,10 @@ export const QueueDrawer: React.FC = () => {
                                     onAction: () => restoreQueue(snapshot),
                                   });
                                 }}
-                                className="text-xs font-bold text-ink-2 hover:text-ink hover:underline"
+                                title="Clear upcoming queue"
+                                className="inline-flex items-center gap-1 px-2 h-6 rounded-sm text-xs font-medium text-ink-2 hover:text-ink hover:bg-hover transition-colors"
                               >
+                                <Trash2 className="w-3.5 h-3.5" />
                                 Clear
                               </button>
                             )}

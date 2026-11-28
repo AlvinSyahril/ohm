@@ -1,15 +1,15 @@
 {
   "app": "ohm",
-  "version": "0.2.1",
-  "releaseDate": "2026-11-22",
-  "downloadUrl": "https://github.com/AlvinSyahril/ohm/releases/download/v0.2.1/Ohm-Setup-0.2.1.exe",
-  "sha256": "346c9c705cf3a064589a0bee633b05925b848476ffb6be7a174235afb555a4e9",
-  "releaseNotesUrl": "https://github.com/AlvinSyahril/ohm/releases/tag/v0.2.1",
+  "version": "0.2.2",
+  "releaseDate": "2026-11-28",
+  "downloadUrl": "https://github.com/AlvinSyahril/ohm/releases/download/v0.2.2/Ohm-Setup-0.2.2.exe",
+  "sha256": "766619ab67cdf461a889256f2df02fd111db0077167653fa90eac9de61119181",
+  "releaseNotesUrl": "https://github.com/AlvinSyahril/ohm/releases/tag/v0.2.2",
   "changelog": [
-    "Global Explore & smart local blend across Explore, New releases, and Charts",
-    "Dynamic Song Radio for fresh queue exploration on repeated clicks",
-    "Real Artist portraits, letterbox thumbnail cropping, and unified library headers",
-    "Recently played time grouping, Queue Shuffle upcoming, and Undo toasts",
-    "Discord Rich Presence v2, unfocused low-latency mode, and Update/What's New pop-ups"
+    "Real Infinity Queue: fresh background autoplay refills with 80-track exclusion memory so long sessions keep discovering new songs",
+    "Audio timeout recovery, global Explore search threading, and localhost-only server CORS hardening",
+    "Home & Queue UI polish: real Artist portraits on Home, card-snapped Related shelves, clean song titles, Queue-aware Selected cuts, uniform Next up controls, and top window hairline",
+    "Playlist drag-to-reorder and collapsible Sync lyric timing offset (-0.5s / +0.5s) in Stage",
+    "Discord Rich Presence live reconnect status updates and cleaner disconnect handling"
   ]
 }

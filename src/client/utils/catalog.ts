@@ -18,6 +18,15 @@ export interface ArtistEntry {
   tracks: Track[];
 }
 
+const VIDEO_TITLE_NOISE_RE =
+  /\s*(?:\((?:official\s+(?:music\s+|lyric\s+|hd\s+|4k\s+)?video|official\s+audio|official\s+visualizer|lyric\s+video|music\s+video|visualizer|audio)\)|\[(?:official\s+(?:music\s+|lyric\s+|hd\s+|4k\s+)?video|official\s+audio|official\s+visualizer|lyric\s+video|music\s+video|visualizer|audio)\]|\|\s*official\s+(?:music\s+|lyric\s+)?video.*)+$/gi;
+
+/** Strip noisy YouTube upload suffixes like "(Official Music Video)" or "| Official Music Video". */
+export function cleanTrackTitle(title: string): string {
+  const cleaned = title.replace(VIDEO_TITLE_NOISE_RE, '').trim();
+  return cleaned || title;
+}
+
 const dedupe = (tracks: Track[]): Track[] => {
   const seen = new Set<string>();
   return tracks.filter((t) => {
